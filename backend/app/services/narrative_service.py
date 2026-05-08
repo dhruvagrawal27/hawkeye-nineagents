@@ -162,7 +162,7 @@ class NarrativeService:
                 latency_ms=int((time.perf_counter() - t0) * 1000),
                 model_version=settings.GROQ_MODEL,
             )
-        except (RetryError, APIError, APITimeoutError, RateLimitError, asyncio.TimeoutError, ValueError) as exc:
+        except (TimeoutError, RetryError, APIError, APITimeoutError, RateLimitError, ValueError) as exc:
             log.warning(
                 "narrative.groq_failure.using_fallback",
                 employee_id=employee_id,

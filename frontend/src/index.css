@@ -28,6 +28,19 @@
   .panel-flat {
     @apply bg-panel/60 border border-line/60 rounded-md;
   }
+  /* "Paper" surface — lighter, warmer, used for documentation / reference
+     content (Settings, Mission callout, About screens). Visually lifts off
+     the dark operational surfaces without breaking the theme. */
+  .panel-paper {
+    @apply rounded-lg border border-amber-200/15 bg-gradient-to-br from-slate-100/[0.04] via-amber-100/[0.03] to-slate-100/[0.02] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,0_8px_30px_-12px_rgba(245,158,11,0.15)];
+  }
+  .panel-paper h2, .panel-paper h3 { @apply text-slate-50; }
+  .panel-paper .eyebrow { @apply text-amber-200/80; }
+  /* Elevated info surface — for "actionable / pending" panels like the
+     Approval queue. Slightly cooler, brighter accent. */
+  .panel-elevated {
+    @apply rounded-lg border border-accent/30 bg-gradient-to-br from-accent/[0.07] via-panel/90 to-panel/95 shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,0_8px_30px_-12px_rgba(59,130,246,0.25)];
+  }
 
   /* Bloomberg-style "L1" header — uppercase eyebrow over a panel */
   .eyebrow {

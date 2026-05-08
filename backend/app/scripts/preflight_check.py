@@ -170,7 +170,7 @@ async def check_websocket_broadcast(client: httpx.AsyncClient) -> None:
                 data = json.loads(msg)
                 assert "type" in data
                 ok("websocket_broadcast")
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 fail("websocket_broadcast", "no message received within 5s")
     except Exception as exc:
         fail("websocket_broadcast", str(exc))

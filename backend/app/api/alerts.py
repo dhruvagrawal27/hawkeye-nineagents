@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -11,7 +11,7 @@ from sqlalchemy import desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import CurrentUser, get_current_user
-from app.deps import db_session, require_analyst, require_supervisor
+from app.deps import db_session, require_analyst
 from app.models.alert import Alert
 from app.models.employee import AuditLog
 from app.schemas import AlertOut, TriageRequest
@@ -46,7 +46,7 @@ async def list_alerts(
     if since:
         seconds = _parse_since(since)
         if seconds is not None:
-            cutoff = datetime.now(timezone.utc) - timedelta(seconds=seconds)
+            cutoff = datetime.now(UTC) - timedelta(seconds=seconds)
             stmt = stmt.where(Alert.triggered_at >= cutoff)
     stmt = stmt.order_by(desc(Alert.triggered_at)).limit(limit).offset(offset)
     rows = (await db.execute(stmt)).scalars().all()
@@ -206,7 +206,7 @@ async def test_broadcast() -> dict[str, Any]:
 
     if not settings.is_preflight_mode:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="preflight only")
-    payload = {"type": "test.broadcast", "ts": datetime.now(timezone.utc).isoformat()}
+    payload = {"type": "test.broadcast", "ts": datetime.now(UTC).isoformat()}
     await broadcast_event(payload)
     return {"sent": True}
 

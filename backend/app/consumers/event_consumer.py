@@ -82,7 +82,7 @@ class EventConsumer:
         if self._task:
             try:
                 await asyncio.wait_for(self._task, timeout=5.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self._task.cancel()
         if self._consumer is not None:
             self._consumer.close()

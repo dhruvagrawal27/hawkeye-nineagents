@@ -1,25 +1,43 @@
-You are an anti-fraud investigator at an Indian public sector bank. Write a professional investigation memo for the following insider threat alert.
+You are writing an insider-fraud investigation memo for an Indian public-sector bank. Two readers must understand it equally well:
 
-Employee ID: {{ employee_id }}
-Risk Score: {{ "%.3f"|format(score) }} / 1.0  (raw {{ "%.4f"|format(raw_score) }}, threshold {{ "%.4f"|format(threshold) }})
-Risk Level: {{ risk_level }}
+1. **Non-technical reader** — a Branch Manager or Compliance Officer with no machine-learning background. They need the *story* in plain English: what is this employee doing, why is it suspicious, what should we do.
+2. **Technical reader** — a fraud analyst who works with the model daily. They need the *numbers*: specific signal values, model factors, baselines.
 
-Top contributing signals (from model SHAP explanation):
+Write so neither reader feels excluded.
+
+Alert context
+- Employee ID: {{ employee_id }}
+- Risk score: {{ "%.3f"|format(score) }} / 1.0  (raw {{ "%.4f"|format(raw_score) }}, threshold {{ "%.4f"|format(threshold) }})
+- Risk level: {{ risk_level }}
+
+Top signals from the model (SHAP)
 {% for f in factors -%}
-- {{ f.name_human }}: {{ f.value_human }} (contribution {{ "%+.3f"|format(f.contribution) }}{% if f.normal %}; normal {{ f.normal }}{% endif %})
+- **{{ f.name_human }}** = {{ f.value_human }} (contribution {{ "%+.3f"|format(f.contribution) }}{% if f.normal %}; normal {{ f.normal }}{% endif %})
 {% endfor %}
-Recent behaviour summary:
+Recent behaviour for this employee
 - Transactions in window: {{ behaviour.n_txn }}
-- Pass-through rate: {{ behaviour.pass_rate_pct }}% (normal <5%)
+- Balance pass-through rate: {{ behaviour.pass_rate_pct }}% (normal < 5%; high pass-through means money flows in and straight back out — a mule pattern)
 - Off-hours activity: {{ behaviour.pngt_pct }}% of transactions
-- Structuring activity (45-49K range): {{ behaviour.ps49_pct }}% of transactions
+- Structuring at ₹45-49K: {{ behaviour.ps49_pct }}% of transactions (just below the ₹50K cash-reporting threshold)
 - Counterparty fan-ratio (credits-in / debits-out): {{ behaviour.fan_ratio }}
 - Graph: shares {{ behaviour.shared_systems }} systems with {{ behaviour.flagged_peers }} other flagged employees
 
-Write exactly four paragraphs with these headers in markdown:
-**Risk Summary**
-**What We Observed**
-**Why It Matters**
-**Recommended Next Step**
+Output format — exactly four sections, each opened with a level-2 markdown heading:
 
-Be specific. Cite the signal values verbatim. Be concise (max 80 words per paragraph). Professional, declarative tone — no hedging language ("may", "could", "potentially"). This memo is for an internal investigation, not customer-facing.
+## Risk Summary
+*Plain-English headline (1 sentence) any branch manager understands.* Then a one-sentence numeric anchor with the score, threshold breach, and the single most important contributing signal. Total: ≤ 60 words.
+
+## What We Observed
+**Plain-English summary first** (1-2 sentences) describing what this employee actually did, in everyday language — e.g. "money flowed in and straight out the same day", "they accessed customer records at 3 AM on weekends", "they touched 40 different systems they normally don't go near". **Then** the supporting numbers (pass-through %, off-hours %, structuring %, fan-ratio, shared systems) cited verbatim. Total: ≤ 100 words.
+
+## Why It Matters
+A non-technical reader must finish this paragraph knowing exactly *what kind of fraud* this looks like (mule account / data exfiltration / collusion ring / privilege-escalation / structuring) and *why the bank should care* (loss exposure, compliance breach, RBI reporting). Avoid jargon like "SHAP", "CV", "feature contribution" here. Total: ≤ 90 words.
+
+## Recommended Next Step
+Concrete, sequenced actions — number them. Make the first one something a manager can authorise *today* without further approval (e.g. "Suspend system access for EMP_xxxxx pending review"). Subsequent steps escalate. Cite specific log windows, document IDs, or stakeholders by role. Total: ≤ 90 words.
+
+Constraints across all four sections:
+- Cite signal values verbatim wherever you reference them.
+- No hedging ("may", "could", "potentially"). The model has already produced a probability; this memo is what to DO about it.
+- No machine-learning vocabulary inside *Risk Summary*, *What We Observed*, or *Why It Matters* — keep those readable by a non-technical manager. Technical vocabulary is allowed in *Recommended Next Step* when it identifies a specific log or system.
+- Do NOT include the phrase "investigation memo" or restate the alert metadata; the reader sees those above the memo.

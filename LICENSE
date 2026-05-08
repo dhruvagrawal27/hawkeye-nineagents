@@ -1,0 +1,84 @@
+HAWKEYE Proprietary License
+===========================
+
+Copyright (c) 2026 Team NINEAGENTS. All rights reserved.
+
+This source code, accompanying documentation, models, datasets, configuration
+files, and all derivative materials (collectively, the "Software") are the
+proprietary intellectual property of Team NINEAGENTS, developed in the context
+of the Reserve Bank of India National Financial Pipeline Challenge (NFPC)
+Phase 2.
+
+The Software is published in this public Git repository for the SOLE PURPOSES
+of:
+
+  1. Demonstration to the RBI NFPC Phase 2 evaluation panel and other
+     authorised reviewers explicitly granted access by Team NINEAGENTS.
+  2. Reproducing the deployment described in the accompanying
+     DEPLOYMENT.md and QUICKSTART.md, only on infrastructure operated by
+     Team NINEAGENTS or its express delegates.
+  3. Reading and inspection by the public for evaluation purposes only.
+
+NO LICENSE — EXPRESS OR IMPLIED — IS GRANTED TO YOU TO:
+
+  - Copy, fork, mirror, reproduce, or redistribute the Software in whole or
+    in part, in source or binary form, with or without modification.
+  - Modify, adapt, translate, transform, or create derivative works of the
+    Software.
+  - Use the Software, or any portion thereof, in any commercial, academic,
+    competitive, training, demonstration, or production setting outside of
+    Team NINEAGENTS' own deployments.
+  - Re-publish the Software, in whole or in part, on any other repository,
+    package registry, container registry, web property, or distribution
+    channel.
+  - Train, fine-tune, evaluate, distil, or otherwise use machine-learning
+    models on the Software, its source code, its documentation, its
+    architecture, or any artefact derived from it.
+  - Remove, alter, obscure, or replace any copyright, trademark, attribution
+    notice, or this LICENSE file.
+
+You may, however, READ this repository for the purpose of personal study,
+reference, or evaluation, provided that no copy is retained beyond your
+local cache and no derivative use occurs.
+
+The grant of read access via the GitHub web interface or the `git clone`
+protocol DOES NOT constitute a grant of any of the rights enumerated above.
+
+VIOLATIONS — AND ALL ENFORCEMENT
+
+Any unauthorised use will be enforced under applicable Indian copyright law
+(Copyright Act, 1957, as amended), the Information Technology Act, 2000, the
+Indian Contract Act, 1872, and any applicable international copyright treaties
+to which the Republic of India is a signatory, including the Berne Convention
+and the WIPO Copyright Treaty. Team NINEAGENTS reserves the right to seek
+injunctive relief, statutory and actual damages, attorney's fees, and any
+other remedy available in law or equity.
+
+THIRD-PARTY COMPONENTS
+
+This Software depends upon and includes references to third-party open-source
+components (listed in `backend/pyproject.toml`, `frontend/package.json`,
+`docker-compose.yml`, and the various Dockerfiles). Those components remain
+governed by their own respective licenses; nothing in this LICENSE shall be
+construed as altering the rights or obligations granted to you by any such
+third-party license.
+
+NO WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM,
+OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+CONTACT
+
+For licensing enquiries, partnership requests, or written permission to use
+the Software in any manner not expressly permitted above, contact:
+
+  Team NINEAGENTS
+  via the repository owner: https://github.com/dhruvagrawal27
+
+— END OF LICENSE —

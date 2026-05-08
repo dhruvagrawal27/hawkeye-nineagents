@@ -18,7 +18,7 @@ export function MissionCallout() {
 
   return (
     <section className={cn(
-      'panel overflow-hidden border-amber-900/50 bg-gradient-to-br from-amber-950/30 via-panel/95 to-rose-950/20',
+      'panel-paper overflow-hidden',
       open ? 'p-4' : 'px-4 py-2',
     )}>
       <header

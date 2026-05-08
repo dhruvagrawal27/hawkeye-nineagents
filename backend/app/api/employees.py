@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import desc, func, select
@@ -175,7 +175,7 @@ async def score_history(
     user: CurrentUser = Depends(require_analyst),
     days: int = Query(30, ge=1, le=180),
 ) -> list[ScorePoint]:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    cutoff = datetime.now(UTC) - timedelta(days=days)
     rows = (
         await db.execute(
             select(ScoreHistory)

@@ -24,7 +24,7 @@ class AlertOut(BaseModel):
     source: str
 
     @classmethod
-    def from_orm_row(cls, alert: Any) -> "AlertOut":
+    def from_orm_row(cls, alert: Any) -> AlertOut:
         return cls(
             id=alert.id,
             employee_id=alert.employee_id,

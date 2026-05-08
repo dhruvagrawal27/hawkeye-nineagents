@@ -11,9 +11,7 @@ import asyncio
 import hashlib
 import json
 import random
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from typing import Any
+from datetime import UTC, datetime, timedelta
 
 import pandas as pd
 import structlog
@@ -141,7 +139,7 @@ async def seed_alerts_and_employees() -> dict[str, int]:
                 inserted_employees += 1
 
             # Seed score history points (a few across the last 30 days)
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             random.seed(hash(employee_id) & 0xFFFFFFFF)
             for d_back in (28, 21, 14, 7, 3, 1):
                 wobble = random.uniform(-0.015, 0.015)
@@ -281,7 +279,7 @@ async def seed_neo4j_graph() -> int:
                     account_id=emp.account_id,
                     system_id=sys_id,
                     access_type="WRITE" if score > scoring_service.threshold else "READ",
-                    ts=datetime.now(timezone.utc).isoformat(),
+                    ts=datetime.now(UTC).isoformat(),
                 )
             n += 1
     log.info("seed.neo4j_done", employees=n)

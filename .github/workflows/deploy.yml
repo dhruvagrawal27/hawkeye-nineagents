@@ -12,9 +12,27 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Skip when VPS secrets aren't configured yet (avoids red badges before
+    # the prod box is provisioned). Once you `gh secret set VPS_HOST` the
+    # workflow starts running.
+    if: ${{ vars.DEPLOY_ENABLED == 'true' || github.event_name == 'workflow_dispatch' }}
     steps:
       - name: Checkout (for context only)
         uses: actions/checkout@v4
+
+      - name: Validate secrets present
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          if [ -z "$VPS_HOST" ] || [ -z "$VPS_SSH_KEY" ]; then
+            echo "VPS_HOST or VPS_SSH_KEY secret is not set — aborting deploy."
+            echo "Set them via:"
+            echo "  gh secret set VPS_HOST    --repo dhruvagrawal27/hawkeye-nineagents --body '<vps-ip>'"
+            echo "  gh secret set VPS_SSH_KEY --repo dhruvagrawal27/hawkeye-nineagents --body \"\$(cat ~/.ssh/hawkeye_deploy)\""
+            echo "Then create a repo variable DEPLOY_ENABLED=true."
+            exit 1
+          fi
 
       - name: Run deploy.sh on VPS
         uses: appleboy/ssh-action@v1.0.3

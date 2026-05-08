@@ -24,8 +24,8 @@ export function SettingsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Model card */}
-        <section className="panel p-5">
-          <h2 className="text-sm uppercase tracking-wider text-slate-400 mb-4">Model card</h2>
+        <section className="panel-paper p-5">
+          <h2 className="text-sm uppercase tracking-wider text-amber-200/80 mb-4">Model card</h2>
           {card.isLoading ? (
             <Skeleton className="h-48 w-full" />
           ) : (
@@ -96,8 +96,8 @@ export function SettingsPage() {
       <RolesMatrix />
 
       {/* Compliance footer */}
-      <section className="panel p-5 border-amber-900/40 bg-amber-950/10">
-        <h3 className="text-xs uppercase tracking-widest text-amber-300/80 mb-2">
+      <section className="panel-paper p-5">
+        <h3 className="text-xs uppercase tracking-widest text-amber-200/80 mb-2">
           Compliance posture
         </h3>
         <p className="text-sm text-slate-300 leading-relaxed">
@@ -136,9 +136,9 @@ function RolesMatrix() {
   ];
 
   return (
-    <section className="panel p-5">
+    <section className="panel-paper p-5">
       <header className="mb-3">
-        <h2 className="text-sm uppercase tracking-widest text-dim">Roles & permissions</h2>
+        <h2 className="text-sm uppercase tracking-widest text-amber-200/80">Roles & permissions</h2>
         <p className="text-xs text-slate-400 mt-1">
           Active role:{' '}
           <span className="text-slate-100 font-mono">{current.label}</span>{' '}

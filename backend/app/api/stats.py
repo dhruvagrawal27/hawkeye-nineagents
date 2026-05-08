@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc, func, select
@@ -25,7 +25,7 @@ async def overview(
     db: AsyncSession = Depends(db_session),
     user: CurrentUser = Depends(require_analyst),
 ) -> StatsOverview:
-    cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+    cutoff_24h = datetime.now(UTC) - timedelta(hours=24)
     n_alerts_24h = (
         await db.scalar(select(func.count(Alert.id)).where(Alert.triggered_at >= cutoff_24h))
         or 0
@@ -78,7 +78,7 @@ async def hourly(
     user: CurrentUser = Depends(require_analyst),
     hours: int = Query(168, ge=1, le=720),  # 7 days default for the heatmap
 ) -> list[dict]:
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    cutoff = datetime.now(UTC) - timedelta(hours=hours)
     rows = (
         await db.execute(
             select(Alert.triggered_at, Alert.risk_level).where(Alert.triggered_at >= cutoff)

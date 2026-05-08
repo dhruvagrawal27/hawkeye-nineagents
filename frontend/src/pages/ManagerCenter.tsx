@@ -167,12 +167,12 @@ function ApprovalQueue({ alerts, loading }: { alerts: AlertT[]; loading: boolean
   });
 
   return (
-    <div className="panel p-0 overflow-hidden">
-      <header className="flex items-center justify-between px-3 py-1.5 border-b border-line/60 bg-panel2/40">
+    <div className="panel-elevated p-0 overflow-hidden">
+      <header className="flex items-center justify-between px-3 py-1.5 border-b border-accent/30 bg-accent/5">
         <span className="eyebrow flex items-center gap-2">
           <ShieldAlert size={12} className="text-amber-400" /> Approval queue
         </span>
-        <span className="text-3xs font-mono text-dim">{alerts.length} pending</span>
+        <span className="text-3xs font-mono text-accent2">{alerts.length} pending</span>
       </header>
       <div className="max-h-[300px] overflow-y-auto">
         {loading ? (

@@ -10,7 +10,7 @@ Dedup rule (single source of truth — see ARCHITECTURE.md §5):
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
@@ -36,7 +36,7 @@ def _employee_id_from_account(account_id: str) -> str:
 async def find_existing_open_alert(
     db: AsyncSession, employee_id: str, window_minutes: int
 ) -> Alert | None:
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+    cutoff = datetime.now(UTC) - timedelta(minutes=window_minutes)
     stmt = (
         select(Alert)
         .where(
@@ -68,7 +68,7 @@ async def create_or_update_alert(
     top_signal = score_result.factors[0].name_human if score_result.factors else None
 
     if existing is not None and (score_result.score - existing.score) < settings.ALERT_DEDUP_DELTA:
-        existing.last_seen_at = datetime.now(timezone.utc)
+        existing.last_seen_at = datetime.now(UTC)
         if score_result.score > existing.score:
             existing.score = score_result.score
             existing.display_score = score_result.display_score
@@ -110,8 +110,8 @@ async def create_or_update_alert(
         display_score=score_result.display_score,
         risk_level=score_result.risk_level,
         status="open",
-        triggered_at=datetime.now(timezone.utc),
-        last_seen_at=datetime.now(timezone.utc),
+        triggered_at=datetime.now(UTC),
+        last_seen_at=datetime.now(UTC),
         shap_factors=factors_payload,
         top_signal=top_signal,
         source=source,
