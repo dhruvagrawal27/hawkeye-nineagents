@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { AppShell } from '@/components/layout/AppShell';
 import { Dashboard } from '@/pages/Dashboard';
+import { ManagerCenter } from '@/pages/ManagerCenter';
 import { ReplayStudio } from '@/pages/ReplayStudio';
 import { AlertsPage } from '@/pages/AlertsPage';
 import { EmployeesPage } from '@/pages/EmployeesPage';
@@ -10,8 +11,11 @@ import { GraphExplorer } from '@/pages/GraphExplorer';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { ToastViewport, toast } from '@/components/ui/Toast';
 import { hawkeyeWs } from '@/lib/ws';
+import { useRole } from '@/store/roleStore';
 
 export default function App() {
+  const role = useRole();
+
   // App-level WebSocket subscription: surface every new alert as a toast
   useEffect(() => {
     hawkeyeWs.connect();
@@ -29,16 +33,19 @@ export default function App() {
         });
       }
     });
-    return () => {
-      unsub();
-    };
+    return () => unsub();
   }, []);
+
+  // Manager lands on the Command Center; Analyst/Supervisor see the standard Dashboard.
+  const Home = role.canViewDepartmentRollup ? ManagerCenter : Dashboard;
 
   return (
     <>
       <Routes>
         <Route path="/" element={<AppShell />}>
-          <Route index element={<Dashboard />} />
+          <Route index element={<Home />} />
+          <Route path="dashboard"       element={<Dashboard />} />
+          <Route path="command"         element={<ManagerCenter />} />
           <Route path="alerts"          element={<AlertsPage />} />
           <Route path="employees"       element={<EmployeesPage />} />
           <Route path="employees/:id"   element={<EmployeeDetail />} />

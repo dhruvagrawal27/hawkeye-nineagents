@@ -4,6 +4,7 @@ import { Activity } from 'lucide-react';
 import { settingsApi, statsApi } from '@/lib/api';
 import { hawkeyeWs } from '@/lib/ws';
 import { cn } from '@/lib/format';
+import { RoleSwitcher } from '@/components/layout/RoleSwitcher';
 
 /**
  * Persistent across-the-top status strip — Bloomberg-style L0 bar.
@@ -107,6 +108,10 @@ export function TopStatusBar() {
         <span className={cn('h-1.5 w-1.5 rounded-full', wsActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600')} />
         <span className="tabular-nums">{wsActive ? 'WS · LIVE' : 'WS · IDLE'}</span>
       </div>
+
+      <Separator />
+
+      <RoleSwitcher />
     </div>
   );
 }

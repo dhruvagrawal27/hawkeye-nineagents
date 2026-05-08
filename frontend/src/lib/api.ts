@@ -60,13 +60,50 @@ export const alertsApi = {
   get: (id: number) => api.get<Alert>(`/alerts/${id}`).then((r) => r.data),
   triage: (id: number, action: 'dismiss' | 'investigate' | 'escalate' | 'reopen', note?: string) =>
     api.post<Alert>(`/alerts/${id}/triage`, { action, note }).then((r) => r.data),
+  bulkTriage: (alert_ids: number[], action: 'dismiss' | 'investigate' | 'escalate' | 'reopen', note?: string) =>
+    api.post<{ updated: number; action: string }>('/alerts/bulk-triage', { alert_ids, action, note }).then((r) => r.data),
+  escalatedQueue: (limit = 50) =>
+    api.get<Alert[]>('/alerts/queue/escalated', { params: { limit } }).then((r) => r.data),
+  myQueue: (limit = 50) =>
+    api.get<Alert[]>('/alerts/queue/mine', { params: { limit } }).then((r) => r.data),
 };
+
+export interface DeptRollup {
+  department: string;
+  total: number;
+  open: number;
+  investigating: number;
+  escalated: number;
+  dismissed: number;
+  critical: number;
+  high: number;
+  max_score: number;
+  mean_score: number;
+  unique_employees: number;
+}
+
+export interface AuditEntry {
+  id: number;
+  alert_id: number | null;
+  employee_id: string | null;
+  actor: string;
+  action: string;
+  detail: string | null;
+  occurred_at: string;
+}
 
 export const statsApi = {
   overview: () => api.get<StatsOverview>('/stats/overview').then((r) => r.data),
   riskDistribution: () =>
     api.get<Array<{ bin_low: number; bin_high: number; count: number }>>('/stats/risk-distribution').then((r) => r.data),
   ingestionRate: () => api.get('/stats/ingestion-rate').then((r) => r.data),
+  byDepartment: () => api.get<DeptRollup[]>('/stats/by-department').then((r) => r.data),
+  hourly: (hours = 168) =>
+    api.get<Array<{ hour: string; LOW: number; MEDIUM: number; HIGH: number; CRITICAL: number; total: number }>>(
+      '/stats/hourly',
+      { params: { hours } },
+    ).then((r) => r.data),
+  auditLog: (limit = 50) => api.get<AuditEntry[]>('/stats/audit-log', { params: { limit } }).then((r) => r.data),
 };
 
 export interface Employee {

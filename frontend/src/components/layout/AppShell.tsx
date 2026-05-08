@@ -1,30 +1,38 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { AlertTriangle, BarChart3, GitBranch, Play, Settings, Users } from 'lucide-react';
+import { AlertTriangle, BarChart3, Building2, GitBranch, Play, Settings, Users } from 'lucide-react';
 import { TopStatusBar } from '@/components/layout/TopStatusBar';
+import { useRole } from '@/store/roleStore';
 import { cn } from '@/lib/format';
 
-const links = [
-  { to: '/',           label: 'Dashboard',       short: 'DASH', icon: BarChart3 },
-  { to: '/alerts',     label: 'Alerts',          short: 'ALRT', icon: AlertTriangle },
-  { to: '/employees',  label: 'Employees',       short: 'EMP',  icon: Users },
-  { to: '/graph',      label: 'Graph Explorer',  short: 'GRPH', icon: GitBranch },
-  { to: '/replay',     label: 'Replay Studio',   short: 'RPLY', icon: Play },
-  { to: '/settings',   label: 'Settings',        short: 'CFG',  icon: Settings },
+const ALL_LINKS = [
+  { to: '/',           label: 'Command Center',  short: 'CMD',  icon: Building2,    managerOnly: true  },
+  { to: '/dashboard',  label: 'Dashboard',       short: 'DASH', icon: BarChart3,    managerOnly: false },
+  { to: '/alerts',     label: 'Alerts',          short: 'ALRT', icon: AlertTriangle, managerOnly: false },
+  { to: '/employees',  label: 'Employees',       short: 'EMP',  icon: Users,         managerOnly: false },
+  { to: '/graph',      label: 'Graph Explorer',  short: 'GRPH', icon: GitBranch,     managerOnly: false },
+  { to: '/replay',     label: 'Replay Studio',   short: 'RPLY', icon: Play,          managerOnly: false },
+  { to: '/settings',   label: 'Settings',        short: 'CFG',  icon: Settings,      managerOnly: false },
 ];
 
 export function AppShell() {
+  const role = useRole();
+
+  // For non-managers, the index '/' renders Dashboard, so the Command Center
+  // link in the sidebar is hidden. The Dashboard link stays as the default home.
+  const links = role.canViewDepartmentRollup
+    ? ALL_LINKS
+    : ALL_LINKS.filter((l) => !l.managerOnly).map((l, i) => i === 0 ? { ...l, to: '/' } : l);
+
   return (
     <div className="min-h-full grid grid-rows-[auto_1fr]">
-      {/* Persistent L0 status bar */}
       <TopStatusBar />
 
-      {/* Main grid */}
       <div className="grid grid-cols-[13rem_1fr]">
         <aside className="bg-panel/50 border-r border-line/60 px-3 py-4 flex flex-col">
           <nav className="flex flex-col gap-0.5">
             {links.map(({ to, label, short, icon: Icon }) => (
               <NavLink
-                key={to}
+                key={to + label}
                 to={to}
                 end={to === '/'}
                 className={({ isActive }) =>

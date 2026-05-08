@@ -6,7 +6,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import CurrentUser
@@ -125,6 +125,87 @@ async def ingestion_rate(user: CurrentUser = Depends(require_analyst)) -> dict:
         }
     except Exception:
         return {"events_published": 0, "alerts_fired": 0, "started_at": None, "rate": 0, "mode": None}
+
+
+@router.get("/by-department", response_model=list[dict])
+async def by_department(
+    db: AsyncSession = Depends(db_session),
+    user: CurrentUser = Depends(require_analyst),
+) -> list[dict]:
+    """Alerts and risk rollup grouped by department.
+
+    Joins alerts ↔ employees on employee_id and aggregates by department.
+    """
+    from sqlalchemy import case
+
+    from app.models.employee import Employee
+
+    stmt = (
+        select(
+            Employee.department.label("department"),
+            func.count(Alert.id).label("total"),
+            func.count(case((Alert.status == "open", 1))).label("open"),
+            func.count(case((Alert.status == "investigating", 1))).label("investigating"),
+            func.count(case((Alert.status == "escalated", 1))).label("escalated"),
+            func.count(case((Alert.status == "dismissed", 1))).label("dismissed"),
+            func.count(case((Alert.risk_level == "CRITICAL", 1))).label("critical"),
+            func.count(case((Alert.risk_level == "HIGH", 1))).label("high"),
+            func.max(Alert.score).label("max_score"),
+            func.avg(Alert.score).label("mean_score"),
+            func.count(func.distinct(Alert.employee_id)).label("unique_employees"),
+        )
+        .join(Alert, Employee.id == Alert.employee_id, isouter=True)
+        .group_by(Employee.department)
+        .order_by(func.count(case((Alert.status == "open", 1))).desc())
+    )
+    rows = (await db.execute(stmt)).all()
+    return [
+        {
+            "department": r.department,
+            "total": int(r.total or 0),
+            "open": int(r.open or 0),
+            "investigating": int(r.investigating or 0),
+            "escalated": int(r.escalated or 0),
+            "dismissed": int(r.dismissed or 0),
+            "critical": int(r.critical or 0),
+            "high": int(r.high or 0),
+            "max_score": float(r.max_score) if r.max_score is not None else 0.0,
+            "mean_score": float(r.mean_score) if r.mean_score is not None else 0.0,
+            "unique_employees": int(r.unique_employees or 0),
+        }
+        for r in rows
+        if r.department  # skip null department (orphan alerts)
+    ]
+
+
+@router.get("/audit-log", response_model=list[dict])
+async def audit_feed(
+    db: AsyncSession = Depends(db_session),
+    user: CurrentUser = Depends(require_analyst),
+    limit: int = Query(50, ge=1, le=500),
+) -> list[dict]:
+    """Recent triage and action history. Used by the manager/audit view."""
+    from app.models.employee import AuditLog
+
+    rows = (
+        await db.execute(
+            select(AuditLog)
+            .order_by(desc(AuditLog.occurred_at))
+            .limit(limit)
+        )
+    ).scalars().all()
+    return [
+        {
+            "id": r.id,
+            "alert_id": r.alert_id,
+            "employee_id": r.employee_id,
+            "actor": r.actor,
+            "action": r.action,
+            "detail": r.detail,
+            "occurred_at": r.occurred_at.isoformat() if r.occurred_at else None,
+        }
+        for r in rows
+    ]
 
 
 @router.get("/model-card", response_model=dict)

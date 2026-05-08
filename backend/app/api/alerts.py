@@ -6,11 +6,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import desc, func, select
+from pydantic import BaseModel, Field
+from sqlalchemy import desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import CurrentUser, get_current_user
-from app.deps import db_session, require_analyst
+from app.deps import db_session, require_analyst, require_supervisor
 from app.models.alert import Alert
 from app.models.employee import AuditLog
 from app.schemas import AlertOut, TriageRequest
@@ -91,6 +92,84 @@ async def triage(
     await db.commit()
     await db.refresh(alert)
     return AlertOut.from_orm_row(alert)
+
+
+class BulkTriageRequest(BaseModel):
+    alert_ids: list[int] = Field(min_length=1, max_length=200)
+    action: str = Field(pattern="^(dismiss|investigate|escalate|reopen)$")
+    note: str | None = None
+
+
+@router.post("/bulk-triage", response_model=dict)
+async def bulk_triage(
+    body: BulkTriageRequest,
+    db: AsyncSession = Depends(db_session),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Manager/supervisor power: triage many alerts at once.
+
+    Returns counts of updated alerts and writes one audit entry per alert.
+    """
+    map_status = {
+        "dismiss": "dismissed",
+        "investigate": "investigating",
+        "escalate": "escalated",
+        "reopen": "open",
+    }
+    new_status = map_status[body.action]
+    fields = {"status": new_status}
+    if body.action == "investigate":
+        fields["assigned_to"] = user.username
+    stmt = update(Alert).where(Alert.id.in_(body.alert_ids)).values(**fields)
+    result = await db.execute(stmt)
+    n = result.rowcount or 0
+    for alert_id in body.alert_ids:
+        db.add(
+            AuditLog(
+                alert_id=alert_id,
+                actor=user.username,
+                action=f"bulk-{body.action}",
+                detail=body.note,
+            )
+        )
+    await db.commit()
+    return {"updated": int(n), "action": body.action}
+
+
+@router.get("/queue/escalated", response_model=list[AlertOut])
+async def escalated_queue(
+    db: AsyncSession = Depends(db_session),
+    user: CurrentUser = Depends(require_analyst),
+    limit: int = Query(50, ge=1, le=200),
+) -> list[AlertOut]:
+    """Alerts awaiting supervisor sign-off."""
+    rows = (
+        await db.execute(
+            select(Alert)
+            .where(Alert.status == "escalated")
+            .order_by(desc(Alert.last_seen_at))
+            .limit(limit)
+        )
+    ).scalars().all()
+    return [AlertOut.from_orm_row(r) for r in rows]
+
+
+@router.get("/queue/mine", response_model=list[AlertOut])
+async def my_queue(
+    db: AsyncSession = Depends(db_session),
+    user: CurrentUser = Depends(get_current_user),
+    limit: int = Query(50, ge=1, le=200),
+) -> list[AlertOut]:
+    """Alerts assigned to the current analyst."""
+    rows = (
+        await db.execute(
+            select(Alert)
+            .where(Alert.assigned_to == user.username, Alert.status == "investigating")
+            .order_by(desc(Alert.triggered_at))
+            .limit(limit)
+        )
+    ).scalars().all()
+    return [AlertOut.from_orm_row(r) for r in rows]
 
 
 def _parse_since(s: str) -> int | None:

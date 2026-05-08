@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
+import { CheckCircle2, AlertCircle, XCircle, ShieldCheck, User, Building2, Check, Minus } from 'lucide-react';
 import { settingsApi } from '@/lib/api';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { ROLES, useRole, useRoleStore, type Role } from '@/store/roleStore';
+import { cn } from '@/lib/format';
 
 export function SettingsPage() {
   const card = useQuery({ queryKey: ['model-card'], queryFn: settingsApi.modelCard });
@@ -90,6 +92,9 @@ export function SettingsPage() {
         </section>
       </div>
 
+      {/* Roles & permissions matrix */}
+      <RolesMatrix />
+
       {/* Compliance footer */}
       <section className="panel p-5 border-amber-900/40 bg-amber-950/10">
         <h3 className="text-xs uppercase tracking-widest text-amber-300/80 mb-2">
@@ -107,6 +112,95 @@ export function SettingsPage() {
         </p>
       </section>
     </div>
+  );
+}
+
+function RolesMatrix() {
+  const current = useRole();
+  const setRole = useRoleStore((s) => s.setRole);
+  const ROLE_ICONS: Record<Role, any> = {
+    analyst: User,
+    supervisor: ShieldCheck,
+    manager: Building2,
+  };
+
+  const capabilities: { key: keyof typeof ROLES.analyst; label: string }[] = [
+    { key: 'canDismiss',                label: 'Dismiss alerts' },
+    { key: 'canInvestigate',            label: 'Open investigations (assign-to-self)' },
+    { key: 'canEscalate',               label: 'Escalate to supervisor' },
+    { key: 'canApproveEscalations',     label: 'Approve / reject escalations' },
+    { key: 'canRegenerateNarrative',    label: 'Regenerate Groq narratives' },
+    { key: 'canBulkAction',             label: 'Bulk triage (multiple alerts)' },
+    { key: 'canViewAuditLog',           label: 'View audit log' },
+    { key: 'canViewDepartmentRollup',   label: 'Department rollup + Command Center' },
+  ];
+
+  return (
+    <section className="panel p-5">
+      <header className="mb-3">
+        <h2 className="text-sm uppercase tracking-widest text-dim">Roles & permissions</h2>
+        <p className="text-xs text-slate-400 mt-1">
+          Active role:{' '}
+          <span className="text-slate-100 font-mono">{current.label}</span>{' '}
+          <span className="text-slate-500">({current.username})</span>.
+          Click any column header to switch role for this browser session.
+        </p>
+      </header>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-line/60">
+              <th className="text-left px-2 py-2 text-3xs uppercase tracking-widest text-dim">Capability</th>
+              {(Object.values(ROLES) as typeof ROLES[Role][]).map((spec) => {
+                const Icon = ROLE_ICONS[spec.id];
+                const active = current.id === spec.id;
+                return (
+                  <th
+                    key={spec.id}
+                    onClick={() => setRole(spec.id)}
+                    className={cn(
+                      'text-left px-3 py-2 cursor-pointer transition-colors',
+                      active ? 'bg-accent/10' : 'hover:bg-line/30',
+                    )}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Icon size={12} className={active ? 'text-accent' : 'text-dim'} />
+                      <span className="text-slate-100 font-medium">{spec.label}</span>
+                      {active && <span className="text-3xs font-mono uppercase tracking-widest text-accent ml-auto">active</span>}
+                    </div>
+                    <div className="text-3xs font-mono text-slate-500 mt-0.5">{spec.username}</div>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {capabilities.map((cap) => (
+              <tr key={cap.key as string} className="border-b border-line/30">
+                <td className="px-2 py-1.5 text-slate-300">{cap.label}</td>
+                {(Object.values(ROLES) as typeof ROLES[Role][]).map((spec) => {
+                  const allowed = !!(spec[cap.key as keyof typeof spec] as boolean);
+                  return (
+                    <td key={spec.id} className="px-3 py-1.5">
+                      {allowed ? (
+                        <Check size={14} className="text-emerald-400" />
+                      ) : (
+                        <Minus size={14} className="text-slate-600" />
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-slate-500 mt-3 leading-relaxed">
+        In production, the role comes from the Keycloak JWT (claim <code className="font-mono">realm_access.roles</code>).
+        The local switcher above is for the demo only — when <code className="font-mono">PREFLIGHT_MODE=0</code> in the
+        backend env, the API enforces role checks based on the bearer token.
+      </p>
+    </section>
   );
 }
 
