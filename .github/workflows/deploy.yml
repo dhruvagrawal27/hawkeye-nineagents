@@ -1,0 +1,30 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (for context only)
+        uses: actions/checkout@v4
+
+      - name: Run deploy.sh on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: root
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          command_timeout: 15m
+          script: |
+            set -euo pipefail
+            cd /opt/hawkeye
+            ./deploy/deploy.sh

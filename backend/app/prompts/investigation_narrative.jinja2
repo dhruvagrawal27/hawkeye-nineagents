@@ -1,0 +1,25 @@
+You are an anti-fraud investigator at an Indian public sector bank. Write a professional investigation memo for the following insider threat alert.
+
+Employee ID: {{ employee_id }}
+Risk Score: {{ "%.3f"|format(score) }} / 1.0  (raw {{ "%.4f"|format(raw_score) }}, threshold {{ "%.4f"|format(threshold) }})
+Risk Level: {{ risk_level }}
+
+Top contributing signals (from model SHAP explanation):
+{% for f in factors -%}
+- {{ f.name_human }}: {{ f.value_human }} (contribution {{ "%+.3f"|format(f.contribution) }}{% if f.normal %}; normal {{ f.normal }}{% endif %})
+{% endfor %}
+Recent behaviour summary:
+- Transactions in window: {{ behaviour.n_txn }}
+- Pass-through rate: {{ behaviour.pass_rate_pct }}% (normal <5%)
+- Off-hours activity: {{ behaviour.pngt_pct }}% of transactions
+- Structuring activity (45-49K range): {{ behaviour.ps49_pct }}% of transactions
+- Counterparty fan-ratio (credits-in / debits-out): {{ behaviour.fan_ratio }}
+- Graph: shares {{ behaviour.shared_systems }} systems with {{ behaviour.flagged_peers }} other flagged employees
+
+Write exactly four paragraphs with these headers in markdown:
+**Risk Summary**
+**What We Observed**
+**Why It Matters**
+**Recommended Next Step**
+
+Be specific. Cite the signal values verbatim. Be concise (max 80 words per paragraph). Professional, declarative tone — no hedging language ("may", "could", "potentially"). This memo is for an internal investigation, not customer-facing.

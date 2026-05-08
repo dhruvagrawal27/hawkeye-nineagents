@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+.eggs/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# Editors
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# HAWKEYE data — bind-mounted at runtime, never committed
+backend/artifacts/
+backend/data/
+artifacts/*.parquet
+artifacts/*.txt
+data/*.parquet
+data/*.jsonl
+!.gitkeep
+
+# Compose & runtime state
+.docker/
+*.log
+*.pid
+
+# OS
+Thumbs.db
+
+# Claude Code local state
+.claude/

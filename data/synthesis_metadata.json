@@ -1,0 +1,24 @@
+{
+  "config": {
+    "n_accounts": 10000,
+    "mule_rate": 0.0113,
+    "n_counterparties": 3000,
+    "n_mule_hub_cps": 50,
+    "n_mule_ips": 80,
+    "n_legit_ips": 5000,
+    "months": 6,
+    "seed": 42,
+    "output_dir": "./hawkeye_synthetic"
+  },
+  "n_accounts": 10000,
+  "n_mules": 112,
+  "mule_rate": 0.0112,
+  "n_transactions": 516650,
+  "avg_txns_per_acct": 51.665,
+  "total_volume_inr": 2608370571.964416,
+  "date_range_start": "2025-11-02T00:00:03.863817692",
+  "date_range_end": "2026-04-30T23:59:46.483972788",
+  "unique_counterparties": 3000,
+  "unique_ips": 5057,
+  "generated_at": "2026-05-04T21:32:22.908604"
+}

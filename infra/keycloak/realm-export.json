@@ -1,0 +1,78 @@
+{
+  "realm": "hawkeye",
+  "enabled": true,
+  "displayName": "HAWKEYE",
+  "displayNameHtml": "<b>HAWKEYE</b>",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "sslRequired": "external",
+  "accessTokenLifespan": 1800,
+  "ssoSessionIdleTimeout": 3600,
+  "ssoSessionMaxLifespan": 28800,
+  "roles": {
+    "realm": [
+      { "name": "analyst",    "description": "Tier-1 fraud analyst — read alerts, triage, view graph"   },
+      { "name": "supervisor", "description": "Tier-2 supervisor — escalate, regenerate narrative" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "hawkeye-frontend",
+      "name": "HAWKEYE Frontend SPA",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "https://hawkeye.nineagents.in/*",
+        "http://localhost:8080/*",
+        "http://localhost:5173/*"
+      ],
+      "webOrigins": [
+        "https://hawkeye.nineagents.in",
+        "http://localhost:8080",
+        "http://localhost:5173"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "+"
+      },
+      "defaultClientScopes": ["profile", "email", "roles", "web-origins"]
+    },
+    {
+      "clientId": "hawkeye-backend",
+      "name": "HAWKEYE Backend (resource server)",
+      "bearerOnly": true,
+      "publicClient": false,
+      "secret": "hawkeye-backend-dev-secret-change-in-prod"
+    }
+  ],
+  "users": [
+    {
+      "username": "analyst@hawkeye.local",
+      "email": "analyst@hawkeye.local",
+      "firstName": "Analyst",
+      "lastName": "Demo",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "analyst", "temporary": false }
+      ],
+      "realmRoles": ["analyst"]
+    },
+    {
+      "username": "supervisor@hawkeye.local",
+      "email": "supervisor@hawkeye.local",
+      "firstName": "Supervisor",
+      "lastName": "Demo",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "supervisor", "temporary": false }
+      ],
+      "realmRoles": ["analyst", "supervisor"]
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body { background: radial-gradient(ellipse at top, #11183c 0%, #0B1020 60%); }
+}
+
+@layer components {
+  .panel {
+    @apply bg-panel/80 backdrop-blur-sm border border-slate-800 rounded-xl shadow-lg shadow-slate-950/40;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono uppercase tracking-wide;
+  }
+  .badge-low      { @apply bg-emerald-900/40 text-emerald-300 border border-emerald-800; }
+  .badge-medium   { @apply bg-amber-900/40 text-amber-300 border border-amber-800; }
+  .badge-high     { @apply bg-orange-900/50 text-orange-300 border border-orange-800; }
+  .badge-critical { @apply bg-red-900/60 text-red-200 border border-red-700 animate-pulse; }
+  .stat-card {
+    @apply panel p-5 flex flex-col gap-1;
+  }
+  .stat-num   { @apply text-3xl font-semibold text-slate-50 font-mono; }
+  .stat-label { @apply text-sm text-slate-400; }
+}

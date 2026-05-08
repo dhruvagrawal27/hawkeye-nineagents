@@ -1,0 +1,67 @@
+# Prod overrides — bind admin ports to 127.0.0.1 only.
+# Public access is exclusively via host nginx on 80/443.
+
+services:
+  zookeeper:
+    restart: unless-stopped
+
+  kafka:
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9092:9092"
+      - "127.0.0.1:9094:9094"
+
+  kafka-init:
+    restart: "no"
+
+  redis:
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  neo4j:
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
+
+  postgres:
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  minio:
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+
+  keycloak:
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:8080"
+
+  mlflow:
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5000:5000"
+
+  prometheus:
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9090:9090"
+
+  grafana:
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  backend:
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  frontend:
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"
