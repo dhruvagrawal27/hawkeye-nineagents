@@ -19,7 +19,7 @@ interface Tick {
   receivedAt: number;
 }
 
-const MAX_TICKS = 80;
+const MAX_TICKS = 120;
 
 export function LiveEventTicker({
   height = 360,
@@ -30,54 +30,59 @@ export function LiveEventTicker({
 }) {
   const [ticks, setTicks] = useState<Tick[]>([]);
   const [paused, setPaused] = useState(false);
+  const [liveCount, setLiveCount] = useState(0);
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
 
   useEffect(() => {
     hawkeyeWs.connect();
     const unsub = hawkeyeWs.subscribe((msg) => {
+      if (msg.type !== 'event.scored') return;
+      setLiveCount((c) => c + 1);
       if (pausedRef.current) return;
-      if (msg.type === 'event.scored') {
-        const t = { ...(msg as any), receivedAt: Date.now() } as Tick;
-        if (showAlertsOnly && !t.is_alert) return;
-        setTicks((prev) => [t, ...prev].slice(0, MAX_TICKS));
-      }
+      const t = { ...(msg as any), receivedAt: Date.now() } as Tick;
+      if (showAlertsOnly && !t.is_alert) return;
+      setTicks((prev) => [t, ...prev].slice(0, MAX_TICKS));
     });
     return () => unsub();
   }, [showAlertsOnly]);
 
   return (
-    <div className="panel overflow-hidden flex flex-col" style={{ height }}>
-      <header className="flex items-center justify-between px-4 py-2 border-b border-slate-800">
+    <div className="panel p-0 overflow-hidden flex flex-col" style={{ height }}>
+      <header className="flex items-center justify-between px-3 py-1.5 border-b border-line/60 bg-panel2/40">
         <div className="flex items-center gap-2">
-          <span className={cn('h-2 w-2 rounded-full', paused ? 'bg-slate-500' : 'bg-emerald-400 animate-pulse')} />
-          <h3 className="text-xs uppercase tracking-widest text-slate-400">
-            {showAlertsOnly ? 'Live alert tape' : 'Live event tape'}
-          </h3>
+          <span className={cn('h-1.5 w-1.5 rounded-full', paused ? 'bg-slate-500' : 'bg-emerald-400 animate-pulse')} />
+          <span className="eyebrow">{showAlertsOnly ? 'Alert tape' : 'Live event tape'}</span>
         </div>
-        <div className="flex items-center gap-2 text-[10px] font-mono text-slate-500">
-          <span>{ticks.length}</span>
-          <button
-            onClick={() => setPaused((p) => !p)}
-            className="text-slate-500 hover:text-slate-200 transition-colors"
-          >
-            {paused ? 'resume' : 'pause'}
+        <div className="flex items-center gap-3 text-3xs font-mono text-dim tabular-nums">
+          <span>{ticks.length} rows</span>
+          <span>·</span>
+          <span>{liveCount.toLocaleString('en-IN')} total</span>
+          <button onClick={() => setPaused((p) => !p)} className="hover:text-ink transition-colors uppercase tracking-widest">
+            {paused ? '▶ resume' : '⏸ pause'}
           </button>
         </div>
       </header>
-      <div className="flex-1 overflow-y-auto font-mono text-[11px]">
+
+      {/* Column headers */}
+      <div className="grid grid-cols-[14px_14px_1fr_56px_72px_44px_1.5fr_56px] gap-1 px-3 py-1 border-b border-line/40 bg-panel2/30 text-3xs font-mono uppercase tracking-wider text-dim">
+        <span></span>
+        <span></span>
+        <span>EMPLOYEE</span>
+        <span>CHAN</span>
+        <span className="text-right">AMOUNT ₹</span>
+        <span className="text-right">SCORE</span>
+        <span>SIGNAL</span>
+        <span className="text-right">TIME</span>
+      </div>
+
+      <div className="flex-1 overflow-y-auto font-mono text-2xs">
         {ticks.length === 0 ? (
-          <div className="text-center text-slate-500 italic mt-8 px-4">
-            Start replay to see events flowing in real-time…
+          <div className="text-center text-dim italic py-12 px-4 text-xs">
+            Waiting for events… click ▶ Start Replay on the Replay Studio.
           </div>
         ) : (
-          <table className="w-full">
-            <tbody>
-              {ticks.map((t) => (
-                <TickRow key={t.tick_id} tick={t} />
-              ))}
-            </tbody>
-          </table>
+          ticks.map((t) => <TickRow key={t.tick_id} tick={t} />)
         )}
       </div>
     </div>
@@ -85,48 +90,51 @@ export function LiveEventTicker({
 }
 
 function TickRow({ tick: t }: { tick: Tick }) {
-  // Briefly highlight on insert — fade out over 1.2s
   const [fresh, setFresh] = useState(true);
   useEffect(() => {
     const id = setTimeout(() => setFresh(false), 1200);
     return () => clearTimeout(id);
   }, []);
 
-  const color = RISK_COLOR[t.risk_level] ?? '#64748b';
+  const color = RISK_COLOR[t.risk_level] ?? '#64748B';
   const dirIcon = t.txn_type === 'C' ? '▲' : t.txn_type === 'D' ? '▼' : '·';
-  const dirColor = t.txn_type === 'C' ? 'text-emerald-300' : t.txn_type === 'D' ? 'text-red-300' : 'text-slate-500';
+  const dirColor =
+    t.txn_type === 'C' ? 'text-emerald-300' :
+    t.txn_type === 'D' ? 'text-rose-400'    :
+                         'text-dim';
   const flashClass = t.is_alert
-    ? 'bg-red-900/40'
+    ? 'bg-rose-950/50'
     : t.risk_level === 'HIGH'
-    ? 'bg-orange-900/30'
+    ? 'bg-orange-950/30'
     : t.risk_level === 'MEDIUM'
-    ? 'bg-amber-900/20'
-    : 'bg-emerald-900/15';
+    ? 'bg-amber-950/20'
+    : 'bg-emerald-950/10';
+
+  const time = t.ts ? new Date(t.ts).toLocaleTimeString('en-IN', { hour12: false, timeZone: 'Asia/Kolkata' }) : '';
 
   return (
-    <tr
+    <div
       className={cn(
-        'border-b border-slate-800/40 transition-colors',
+        'grid grid-cols-[14px_14px_1fr_56px_72px_44px_1.5fr_56px] gap-1 px-3 py-0.5 border-b border-line/30 transition-colors items-center',
         fresh && flashClass,
       )}
     >
-      <td className="py-1 pl-3 pr-1 w-3" style={{ color }}>
-        ●
-      </td>
-      <td className={cn('py-1 px-1 w-3', dirColor)}>{dirIcon}</td>
-      <td className="py-1 px-1 w-32 truncate text-slate-300">{t.employee_id}</td>
-      <td className="py-1 px-1 w-16 text-slate-500">{t.channel}</td>
-      <td className="py-1 px-1 w-20 text-right tabular-nums text-slate-300">
+      <span style={{ color }} className="text-[10px]">●</span>
+      <span className={cn('leading-none', dirColor)}>{dirIcon}</span>
+      <span className="truncate text-ink">{t.employee_id}</span>
+      <span className="text-dim truncate uppercase">{t.channel}</span>
+      <span className="text-right tabular-nums text-ink">
         {Math.abs(t.amount).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-      </td>
-      <td className="py-1 px-1 w-12 text-right tabular-nums" style={{ color }}>
+      </span>
+      <span className="text-right tabular-nums" style={{ color }}>
         {t.score.toFixed(2)}
-      </td>
-      <td className="py-1 pr-3 pl-1 truncate text-slate-400">
-        {t.is_alert ? '⚠ ' : ''}
+      </span>
+      <span className="truncate text-dim">
+        {t.is_alert ? <span className="text-rose-300">⚠ </span> : ''}
         {t.top_signal ?? ''}
-        {t.is_after_hours && <span className="text-slate-500"> · off-hrs</span>}
-      </td>
-    </tr>
+        {t.is_after_hours && <span className="text-amber-400/80"> · OFF-HRS</span>}
+      </span>
+      <span className="text-right text-dim tabular-nums">{time}</span>
+    </div>
   );
 }

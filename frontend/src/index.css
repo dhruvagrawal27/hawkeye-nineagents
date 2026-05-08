@@ -4,23 +4,63 @@
 
 @layer base {
   html, body, #root { height: 100%; }
-  body { background: radial-gradient(ellipse at top, #11183c 0%, #0B1020 60%); }
+  body {
+    background:
+      radial-gradient(ellipse 800px 400px at 30% -100px, rgba(59, 130, 246, 0.08), transparent),
+      radial-gradient(ellipse 1000px 600px at 90% 100%, rgba(34, 211, 238, 0.06), transparent),
+      #070A18;
+    font-feature-settings: "tnum" 1, "ss01" 1;
+  }
+  .font-mono { font-feature-settings: "tnum" 1, "zero" 1, "ss02" 1; }
+  /* tabular numerals everywhere data lives */
+  table, .tabular { font-variant-numeric: tabular-nums; }
+  /* tighter scrollbars (chrome only) */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #1F2A4D; border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: #2A3766; }
 }
 
 @layer components {
   .panel {
-    @apply bg-panel/80 backdrop-blur-sm border border-slate-800 rounded-xl shadow-lg shadow-slate-950/40;
+    @apply bg-panel/85 backdrop-blur-sm border border-line/80 rounded-lg shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset,0_4px_20px_-8px_rgba(0,0,0,0.5)];
   }
+  .panel-flat {
+    @apply bg-panel/60 border border-line/60 rounded-md;
+  }
+
+  /* Bloomberg-style "L1" header — uppercase eyebrow over a panel */
+  .eyebrow {
+    @apply text-[10px] font-mono uppercase tracking-widest text-dim;
+  }
+
+  /* Status pills */
   .badge {
-    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono uppercase tracking-wide;
+    @apply inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-mono uppercase tracking-wide leading-none;
   }
-  .badge-low      { @apply bg-emerald-900/40 text-emerald-300 border border-emerald-800; }
-  .badge-medium   { @apply bg-amber-900/40 text-amber-300 border border-amber-800; }
-  .badge-high     { @apply bg-orange-900/50 text-orange-300 border border-orange-800; }
-  .badge-critical { @apply bg-red-900/60 text-red-200 border border-red-700 animate-pulse; }
-  .stat-card {
-    @apply panel p-5 flex flex-col gap-1;
+  .badge-low      { @apply bg-emerald-900/40 text-emerald-300 border border-emerald-900/60; }
+  .badge-medium   { @apply bg-amber-900/40 text-amber-300 border border-amber-900/60; }
+  .badge-high     { @apply bg-orange-900/50 text-orange-300 border border-orange-900/60; }
+  .badge-critical { @apply bg-red-900/60 text-red-200 border border-red-700/80 animate-pulse; }
+  .badge-flat     { @apply bg-slate-800/60 text-slate-400 border border-slate-700; }
+
+  /* Stat blocks (compact L1-style) */
+  .stat-card  { @apply panel px-4 py-3 flex flex-col gap-0.5; }
+  .stat-num   { @apply text-2xl font-semibold text-ink font-mono leading-tight; }
+  .stat-label { @apply eyebrow flex items-center gap-1.5; }
+
+  /* Tabular row hover state */
+  .row-hover { @apply hover:bg-line/30 transition-colors; }
+
+  /* Live dot */
+  .live-dot {
+    @apply inline-block h-1.5 w-1.5 rounded-full bg-emerald-400;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.7);
+    animation: pulse-soft 1.6s ease-in-out infinite;
   }
-  .stat-num   { @apply text-3xl font-semibold text-slate-50 font-mono; }
-  .stat-label { @apply text-sm text-slate-400; }
+
+  /* Link-style chip */
+  .chip {
+    @apply inline-flex items-center gap-1.5 px-2 py-0.5 rounded border border-line/60 text-2xs font-mono uppercase tracking-widest text-dim;
+  }
 }
