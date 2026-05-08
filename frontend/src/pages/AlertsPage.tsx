@@ -15,11 +15,14 @@ type SortKey = 'triggered_at' | 'score' | 'risk_level' | 'employee_id';
 
 const RISK_RANK: Record<string, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
 
+const DEPARTMENTS = ['all', 'Core Banking', 'Treasury', 'Loans', 'HRMS', 'Compliance'];
+
 export function AlertsPage() {
   const role = useRole();
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [riskFilter, setRiskFilter] = useState<string>('all');
+  const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('triggered_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -29,12 +32,13 @@ export function AlertsPage() {
   useRealtimeAlerts(200);
 
   const query = useQuery({
-    queryKey: ['alerts', { limit: 200, statusFilter, riskFilter }],
+    queryKey: ['alerts', { limit: 200, statusFilter, riskFilter, departmentFilter }],
     queryFn: () =>
       alertsApi.list({
         limit: 200,
         status: statusFilter === 'all' ? undefined : statusFilter,
         risk_level: riskFilter === 'all' ? undefined : riskFilter,
+        department: departmentFilter === 'all' ? undefined : departmentFilter,
       }),
     refetchInterval: 15_000,
   });
@@ -112,6 +116,11 @@ export function AlertsPage() {
               { value: 'escalated', label: 'Escalated' },
               { value: 'dismissed', label: 'Dismissed' },
             ]}
+          />
+          <SegmentedControl
+            value={departmentFilter}
+            onChange={setDepartmentFilter}
+            options={DEPARTMENTS.map((d) => ({ value: d, label: d === 'all' ? 'All depts' : d }))}
           />
           <SegmentedControl
             value={riskFilter}

@@ -85,6 +85,18 @@ export function GraphCanvas({
         .on('zoom', (e) => g.attr('transform', e.transform)),
     );
 
+    // Per-department centroids — used when clusterByDepartment is on so
+    // same-dept employees actually pull toward each other spatially.
+    const DEPT_NAMES = Object.keys(DEPT_COLORS);
+    const deptCentroid = (dept: string | null): { x: number; y: number } => {
+      const idx = dept ? DEPT_NAMES.indexOf(dept) : -1;
+      if (idx < 0) return { x: width / 2, y: height / 2 };
+      // Arrange 5 departments in a pentagon around the canvas center.
+      const angle = (idx / DEPT_NAMES.length) * Math.PI * 2 - Math.PI / 2;
+      const r = Math.min(width, height) * 0.32;
+      return { x: width / 2 + Math.cos(angle) * r, y: height / 2 + Math.sin(angle) * r };
+    };
+
     const sim = d3
       .forceSimulation<SimNode>(nodes)
       .force(
@@ -92,12 +104,53 @@ export function GraphCanvas({
         d3
           .forceLink<SimNode, SimLink>(links)
           .id((d) => d.id)
-          .distance(70)
-          .strength(0.4),
+          .distance(clusterByDepartment ? 50 : 70)
+          .strength(clusterByDepartment ? 0.2 : 0.4),
       )
-      .force('charge', d3.forceManyBody<SimNode>().strength(-180))
-      .force('center', d3.forceCenter(width / 2, height / 2))
+      .force('charge', d3.forceManyBody<SimNode>().strength(clusterByDepartment ? -110 : -180))
+      .force('center', d3.forceCenter(width / 2, height / 2).strength(clusterByDepartment ? 0.02 : 0.05))
       .force('collide', d3.forceCollide<SimNode>().radius(20));
+
+    if (clusterByDepartment) {
+      sim
+        .force(
+          'cluster-x',
+          d3
+            .forceX<SimNode>((d) => (d.label === 'Employee' ? deptCentroid(d.department).x : width / 2))
+            .strength(0.18),
+        )
+        .force(
+          'cluster-y',
+          d3
+            .forceY<SimNode>((d) => (d.label === 'Employee' ? deptCentroid(d.department).y : height / 2))
+            .strength(0.18),
+        );
+    }
+
+    // Department labels at each centroid (only when clustering is on)
+    if (clusterByDepartment) {
+      const labels = g.append('g').attr('class', 'dept-labels');
+      DEPT_NAMES.forEach((dept) => {
+        const { x, y } = deptCentroid(dept);
+        const color = DEPT_COLORS[dept];
+        labels
+          .append('circle')
+          .attr('cx', x).attr('cy', y).attr('r', 60)
+          .attr('fill', color).attr('fill-opacity', 0.04)
+          .attr('stroke', color).attr('stroke-opacity', 0.25)
+          .attr('stroke-dasharray', '3 3');
+        labels
+          .append('text')
+          .attr('x', x).attr('y', y - 70)
+          .attr('text-anchor', 'middle')
+          .attr('fill', color)
+          .attr('opacity', 0.7)
+          .attr('font-family', 'JetBrains Mono, monospace')
+          .attr('font-size', 10)
+          .attr('letter-spacing', '0.2em')
+          .text(dept.toUpperCase());
+      });
+    }
 
     const link = g
       .append('g')

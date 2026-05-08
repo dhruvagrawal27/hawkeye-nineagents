@@ -28,8 +28,11 @@ async def list_alerts(
     risk_level: str | None = Query(None),
     alert_status: str | None = Query(None, alias="status"),
     employee_id: str | None = Query(None),
+    department: str | None = Query(None, description="Core Banking | Treasury | Loans | HRMS | Compliance"),
     since: str | None = Query(None, description="window like '60s', '5m', '24h'"),
 ) -> list[AlertOut]:
+    from app.models.employee import Employee
+
     stmt = select(Alert)
     if risk_level:
         stmt = stmt.where(Alert.risk_level == risk_level.upper())
@@ -37,6 +40,9 @@ async def list_alerts(
         stmt = stmt.where(Alert.status == alert_status.lower())
     if employee_id:
         stmt = stmt.where(Alert.employee_id == employee_id)
+    if department:
+        # Inner-join to filter by employee's department
+        stmt = stmt.join(Employee, Alert.employee_id == Employee.id).where(Employee.department == department)
     if since:
         seconds = _parse_since(since)
         if seconds is not None:

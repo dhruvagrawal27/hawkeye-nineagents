@@ -55,7 +55,7 @@ export interface StatsOverview {
 }
 
 export const alertsApi = {
-  list: (params: { limit?: number; status?: string; risk_level?: string } = {}) =>
+  list: (params: { limit?: number; status?: string; risk_level?: string; department?: string } = {}) =>
     api.get<Alert[]>('/alerts', { params }).then((r) => r.data),
   get: (id: number) => api.get<Alert>(`/alerts/${id}`).then((r) => r.data),
   triage: (id: number, action: 'dismiss' | 'investigate' | 'escalate' | 'reopen', note?: string) =>
