@@ -51,9 +51,9 @@ export function AppShell() {
             ))}
           </nav>
           <div className="mt-auto pt-4 border-t border-line/60 text-3xs font-mono uppercase tracking-widest text-dim/80 leading-relaxed">
-            NINEAGENTS
+            <span className="text-amber-300/80">INSIDER FRAUD</span>
             <br />
-            RBI NFPC #4
+            NINEAGENTS · RBI NFPC #4
             <br />
             AUC 0.998 · F1 0.967
           </div>

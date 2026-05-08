@@ -13,6 +13,7 @@ import { useRealtimeAlerts } from '@/hooks/useRealtimeAlerts';
 import { LiveEventTicker } from '@/components/replay/LiveEventTicker';
 import { EventRateChart } from '@/components/charts/EventRateChart';
 import { AlertHeatmap } from '@/components/charts/AlertHeatmap';
+import { MissionCallout } from '@/components/layout/MissionCallout';
 import { RiskBadge } from '@/components/ui/RiskBadge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toast';
@@ -34,13 +35,15 @@ export function ManagerCenter() {
 
   return (
     <div className="space-y-3">
+      <MissionCallout />
+
       {/* Header strip — bank manager identity & big numbers */}
       <header className="panel px-4 py-3 flex items-center gap-4">
         <Building2 size={20} className="text-accent" />
         <div className="flex-1 min-w-0">
-          <h1 className="text-base font-semibold text-ink">Branch Command Center</h1>
+          <h1 className="text-base font-semibold text-ink">Branch Command Center · Insider Fraud</h1>
           <p className="text-2xs text-dim font-mono uppercase tracking-widest">
-            Real-time supervision · cross-department rollup · approve & escalate
+            Real-time supervision of bank employees with privileged access · approve &amp; escalate
           </p>
         </div>
         <CommandStat label="OPEN"          value={overview.data?.alerts_open}        tone="info" />

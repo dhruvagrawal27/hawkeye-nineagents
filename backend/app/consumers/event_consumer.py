@@ -244,6 +244,10 @@ class EventConsumer:
                 "channel": event.get("channel", ""),
                 "is_after_hours": bool(event.get("is_after_hours", False)),
                 "ts": event.get("transaction_timestamp"),
+                # Insider-fraud signal fields per problem statement
+                "system_resource": event.get("system_resource") or _system_from_cp(event.get("counterparty_id")),
+                "access_type": event.get("access_type") or ("WRITE" if event.get("txn_type") == "D" else "READ"),
+                "records_accessed": int(event.get("records_accessed") or 0),
             }
         )
 

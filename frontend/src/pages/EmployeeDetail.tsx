@@ -59,6 +59,9 @@ export function EmployeeDetail() {
                 {employee.data?.risk_level && <RiskBadge level={employee.data.risk_level} size="md" />}
               </div>
               <div className="font-mono text-xs text-slate-400">{employee.data?.id}</div>
+              <div className="text-2xs uppercase tracking-widest text-amber-400/80 mt-1 font-mono">
+                Bank employee · privileged-access monitoring
+              </div>
               <div className="mt-3 flex gap-6 text-xs">
                 <Stat label="Department" value={employee.data?.department} />
                 <Stat label="Open alerts" value={String(employee.data?.open_alert_count ?? 0)} />
