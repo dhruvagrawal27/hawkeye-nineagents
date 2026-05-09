@@ -1,6 +1,8 @@
 # HAWKEYE — Build status & next steps
 
-This document is the truth about what was completed in the initial scaffold versus what still needs work before the demo is judge-ready. Read this top-to-bottom before doing anything else.
+> 🟢 **System is live** at <https://hawkeye.nineagents.in> as of 2026-05-09. See [DEPLOYMENT.md](DEPLOYMENT.md) for the deployed configuration and [DEPLOYMENT_RETRO.md](DEPLOYMENT_RETRO.md) for what we learned. Demo is judge-ready in `PREFLIGHT_MODE=1` (auth bypassed; role switcher in the top-right). The remaining items below are roadmap (not blockers).
+
+This document is the truth about what was completed in the scaffold + deployment versus what's still on the roadmap.
 
 ## What's complete and verified working
 

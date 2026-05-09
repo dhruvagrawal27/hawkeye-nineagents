@@ -1,8 +1,52 @@
 # HAWKEYE — Deployment
 
-Production target: a fresh Hetzner CCX23 (or equivalent) Ubuntu 22.04 LTS VPS. Domain: `hawkeye.nineagents.in`.
+> ⚠️ **Read [DEPLOYMENT_RETRO.md](DEPLOYMENT_RETRO.md) first** if you're going to provision a fresh instance — it captures every gotcha we hit on the live deploy with the permanent fixes already merged. Total time saved: ~2.5 hours.
+
+---
+
+## 🟢 Currently deployed
+
+| | |
+|---|---|
+| **Live URL** | https://hawkeye.nineagents.in |
+| **Deployed at** | 2026-05-09 |
+| **VPS** | Hetzner Cloud · CX33 (4 vCPU / 8 GB RAM / 80 GB SSD) · Helsinki (HEL1) |
+| **Public IP** | 204.168.183.139 |
+| **OS** | Ubuntu 24.04 LTS |
+| **Cost** | **~€8/mo** (CX33 only) |
+| **Backups** | ❌ NOT enabled — cost decision. Snapshots can be enabled in the Hetzner console for an additional ~€1.60/mo (20% surcharge). For demo data this is fine; before any real-data deployment, turn them on. |
+| **TLS** | Let's Encrypt cert valid until 2026-08-07, auto-renewing via `certbot.timer` |
+| **DNS** | Hostinger nameservers (`ns1/2.dns-parking.com`); A record `hawkeye → 204.168.183.139` |
+| **Backend auth state** | `PREFLIGHT_MODE=1` — JWT auth bypassed for demo. Anyone with the URL can browse. Switch role with the chip in the top-right. **Flip to `0`** in `/opt/hawkeye/.env` and `docker compose restart backend` to lock down for production (then frontend Keycloak login flow is required, which is on the [NEXT_STEPS](NEXT_STEPS.md) list). |
+| **Auto-deploy** | GitHub Actions secrets `VPS_HOST` + `VPS_SSH_KEY` set; variable `DEPLOY_ENABLED=true`. Every push to `main` runs `deploy.sh` over SSH. Warm deploy: ~3 min. |
+| **Demo creds** | (only used when `PREFLIGHT_MODE=0`) `analyst@hawkeye.local` / `analyst` and `supervisor@hawkeye.local` / `supervisor` — pre-loaded from `infra/keycloak/realm-export.json` |
+
+---
+
+## Deployment recipe (fresh VPS)
+
+The recipe below is what you'd run on a NEW Hetzner CX33 (or any 8 GB Ubuntu 24.04 box). The current production box was provisioned this way on 2026-05-09.
+
+> 📋 **Before you start**, read [DEPLOYMENT_RETRO.md](DEPLOYMENT_RETRO.md). The fixes are all already in `main`, but knowing where the landmines were makes the deploy faster.
 
 ## 1. DNS (do this first; TLS depends on it)
+
+⚠️ **Critical pre-check**: confirm the domain's authoritative nameservers point ONLY at the DNS provider you'll be editing. If your domain is delegated to multiple providers (e.g. both Hostinger AND Vercel), DNS resolvers round-robin and you'll get inconsistent answers. We hit this — see RETRO #7.
+
+```bash
+dig +short NS nineagents.in
+# Should show ONE provider's nameservers (e.g. ns1/2.dns-parking.com only)
+```
+
+At the registrar for `nineagents.in`:
+
+```
+hawkeye.nineagents.in   A   <new-vps-ip>   TTL 300
+```
+
+Wait for propagation: `dig +short hawkeye.nineagents.in @8.8.8.8` should return your VPS IP.
+
+## 2. One-time host bootstrap
 
 At the registrar for `nineagents.in`:
 
@@ -63,14 +107,63 @@ Generate randoms with `openssl rand -base64 32`.
 
 ## 5. Install host nginx config + TLS
 
+⚠️ The committed nginx config has hardcoded SSL cert paths (`/etc/letsencrypt/live/hawkeye.nineagents.in/...`) — `nginx -t` will fail before the cert exists. Use this 2-step flow:
+
+### 5a — minimal HTTP-only config so nginx starts (and serves the ACME challenge)
+
 ```bash
-cp /opt/hawkeye/infra/nginx/hawkeye.nineagents.in.conf /etc/nginx/sites-available/
+rm -f /etc/nginx/sites-enabled/default
+mkdir -p /var/www/certbot
+
+cat > /etc/nginx/sites-available/hawkeye.nineagents.in <<'HAWKEYE_NGINX_EOF'
+server {
+    listen 80;
+    server_name hawkeye.nineagents.in;
+    location /.well-known/acme-challenge/ { root /var/www/certbot; }
+    location / { return 200 "HAWKEYE provisioning - TLS pending\n"; add_header Content-Type text/plain; }
+}
+HAWKEYE_NGINX_EOF
+
 ln -sfn /etc/nginx/sites-available/hawkeye.nineagents.in /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
+```
 
-certbot --nginx -d hawkeye.nineagents.in \
-  --email nineagents@nineagents.in --agree-tos --no-eff-email
+Verify nginx is reachable on the public IP via the actual hostname (use `--resolve` to bypass any DNS oddities):
+
+```bash
+curl --resolve hawkeye.nineagents.in:80:$(hostname -I | awk '{print $1}') http://hawkeye.nineagents.in/
+# Should print: HAWKEYE provisioning - TLS pending
+```
+
+### 5b — issue cert via webroot (no nginx -t conflict)
+
+```bash
+certbot certonly --webroot -w /var/www/certbot \
+  -d hawkeye.nineagents.in \
+  --email dhruv@nineagents.in \
+  --agree-tos --no-eff-email --non-interactive
+
+ls -la /etc/letsencrypt/live/hawkeye.nineagents.in/
+# expect: cert.pem, chain.pem, fullchain.pem, privkey.pem
+```
+
+### 5c — swap in the FULL nginx config (now that the cert exists)
+
+```bash
+cp /opt/hawkeye/infra/nginx/hawkeye.nineagents.in.conf /etc/nginx/sites-available/hawkeye.nineagents.in
+nginx -t && systemctl reload nginx
+
+# Verify auto-renewal works (dry run; doesn't change the real cert)
 certbot renew --dry-run
+```
+
+### 5d — verify HTTPS from your laptop
+
+```powershell
+# Use curl.exe explicitly — PowerShell aliases `curl` to Invoke-WebRequest which doesn't take Unix flags
+curl.exe -I http://hawkeye.nineagents.in/                # should be 301 to HTTPS
+curl.exe https://hawkeye.nineagents.in/api/healthz       # {"status":"ok"}
+start https://hawkeye.nineagents.in
 ```
 
 ## 6. First deploy

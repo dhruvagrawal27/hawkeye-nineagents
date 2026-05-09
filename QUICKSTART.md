@@ -1,6 +1,8 @@
 # HAWKEYE — Quickstart
 
-Local dev quickstart, then deploy steps.
+> 🟢 The system is **already live** at <https://hawkeye.nineagents.in>. If you're an evaluator, just open the URL — no setup required, auth is bypassed for the demo.
+
+This file is for **developers** who want to run HAWKEYE locally OR re-deploy to their own infrastructure.
 
 ## Local (the stack you have right now)
 

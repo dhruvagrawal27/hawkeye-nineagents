@@ -2,6 +2,61 @@
 
 All notable changes to HAWKEYE. Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.0] — 2026-05-09 — 🚀 Live on Hetzner
+
+The system is now live at **<https://hawkeye.nineagents.in>**, deployed on a
+Hetzner Cloud CX33 in Helsinki. Cost ~€8/month (Hetzner backups intentionally
+not enabled — cost decision; can be flipped on for ~€1.60/mo extra).
+
+### Deployment infrastructure
+
+- **VPS**: Hetzner CX33 (4 vCPU / 8 GB / 80 GB SSD), Ubuntu 24.04, Helsinki HEL1
+- **Public IP**: 204.168.183.139, DNS via Hostinger nameservers
+- **TLS**: Let's Encrypt via certbot, auto-renewing through `certbot.timer`
+- **Reverse proxy**: host nginx → backend:8000 (`/api`), backend:8000 (`/ws`),
+  keycloak:8081 (`/auth`), frontend:8080 (`/` SPA)
+- **Backend auth state**: `PREFLIGHT_MODE=1` (auth bypassed for demo —
+  evaluators can browse without login). Production lockdown is one env-var
+  flip away once Keycloak login is wired in the SPA.
+- **CI/CD**: `git push origin main` → GitHub Actions runs `deploy.sh` over
+  SSH on the VPS → docker compose up → migrate → seed → preflight → reload
+  nginx. Warm deploy: ~3 min. Secrets `VPS_HOST` / `VPS_SSH_KEY` set;
+  variable `DEPLOY_ENABLED=true`.
+
+### Bugs found and fixed during the live deploy (full retro in [DEPLOYMENT_RETRO.md](DEPLOYMENT_RETRO.md))
+
+- `deploy.sh` symlinked `/opt/hawkeye-data/artifacts → backend/artifacts`
+  but compose actually binds `./artifacts`. **Fix**: switched to top-level
+  symlinks; added `rm -rf` before `ln -s` so cloned-repo dirs don't trap
+  the symlink inside themselves. Also added a hard-fail sanity check if
+  the model artifacts aren't present after the symlink. (commit `d8c04c7`)
+- `chmod +x` on `deploy/*.sh` was lost on every `git pull` because the
+  Windows-authored repo tracked them as `100644`. **Fix**: changed git
+  index mode to `100755`. (commit `bd2a9cd`)
+- `docker-compose.prod.yml` overrode `ports:` arrays from the base file;
+  Compose v2 actually MERGES port arrays instead of replacing, so
+  containers tried to bind both `0.0.0.0:<port>` AND `127.0.0.1:<port>`,
+  failing with EADDRINUSE. The `!reset` YAML tag made it worse (cleared
+  ports entirely). **Fix**: env-var interpolation `${BIND_HOST:-0.0.0.0}`
+  in the base file; prod sets `BIND_HOST=127.0.0.1`. Works on every
+  compose version, no version-gated YAML tags. (commit `831f936`)
+
+### Documentation
+
+- `README.md` rewritten as a panel-evaluation landing page — leads with the
+  live URL, explains what evaluators see in 60 seconds, surfaces the
+  current `PREFLIGHT_MODE=1` state prominently.
+- `DEPLOYMENT.md` got a "🟢 Currently deployed" status block at the top
+  (live URL, VPS specs, cost, no-backups note, auth state, demo creds);
+  the TLS section now uses the 2-step certbot webroot flow that actually
+  works around the chicken-and-egg between nginx config requiring SSL
+  cert files that don't exist yet.
+- New `DEPLOYMENT_RETRO.md` — every gotcha we hit on the live deploy with
+  the permanent fixes already in `main`. Saves ~2.5 hours on the next
+  deploy.
+
+---
+
 ## [0.4.0] — 2026-05-08 — Problem-statement alignment & insider-fraud framing
 
 The system was always built for internal & privileged user fraud, but the UI used vague language
