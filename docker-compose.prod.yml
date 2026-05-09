@@ -1,71 +1,24 @@
-# Prod overrides — bind admin ports to 127.0.0.1 only.
-# Public access is exclusively via host nginx on 80/443.
+# Prod overrides — `restart: unless-stopped` on every service.
 #
-# `!reset` is required because compose v2 MERGES `ports:` arrays from
-# overlay files instead of replacing them. Without !reset each service
-# would try to bind both `0.0.0.0:<port>` (from base) and
-# `127.0.0.1:<port>` (from this file) and fail with EADDRINUSE.
+# Port-binding is controlled by the BIND_HOST env var read by the BASE
+# docker-compose.yml. Set BIND_HOST=127.0.0.1 in the .env file to bind
+# all admin ports (postgres, redis, neo4j, kafka, minio, keycloak,
+# mlflow, prometheus, grafana, backend, frontend) to loopback only —
+# host nginx is the only thing that should reach them externally.
+#
+# Local dev leaves BIND_HOST unset → defaults to 0.0.0.0 (all interfaces).
 
 services:
-  zookeeper:
-    restart: unless-stopped
-
-  kafka:
-    restart: unless-stopped
-    ports: !reset
-      - "127.0.0.1:9092:9092"
-
-  kafka-init:
-    restart: "no"
-
-  redis:
-    restart: unless-stopped
-    ports: !reset
-      - "127.0.0.1:6379:6379"
-
-  neo4j:
-    restart: unless-stopped
-    ports: !reset
-      - "127.0.0.1:7474:7474"
-      - "127.0.0.1:7687:7687"
-
-  postgres:
-    restart: unless-stopped
-    ports: !reset
-      - "127.0.0.1:5432:5432"
-
-  minio:
-    restart: unless-stopped
-    ports: !reset
-      - "127.0.0.1:9000:9000"
-      - "127.0.0.1:9001:9001"
-
-  keycloak:
-    restart: unless-stopped
-    ports: !reset
-      - "127.0.0.1:8081:8080"
-
-  mlflow:
-    restart: unless-stopped
-    ports: !reset
-      - "127.0.0.1:5000:5000"
-
-  prometheus:
-    restart: unless-stopped
-    ports: !reset
-      - "127.0.0.1:9090:9090"
-
-  grafana:
-    restart: unless-stopped
-    ports: !reset
-      - "127.0.0.1:3000:3000"
-
-  backend:
-    restart: unless-stopped
-    ports: !reset
-      - "127.0.0.1:8000:8000"
-
-  frontend:
-    restart: unless-stopped
-    ports: !reset
-      - "127.0.0.1:8080:80"
+  zookeeper:    { restart: unless-stopped }
+  kafka:        { restart: unless-stopped }
+  kafka-init:   { restart: "no" }
+  redis:        { restart: unless-stopped }
+  neo4j:        { restart: unless-stopped }
+  postgres:     { restart: unless-stopped }
+  minio:        { restart: unless-stopped }
+  keycloak:     { restart: unless-stopped }
+  mlflow:       { restart: unless-stopped }
+  prometheus:   { restart: unless-stopped }
+  grafana:      { restart: unless-stopped }
+  backend:      { restart: unless-stopped }
+  frontend:     { restart: unless-stopped }
