@@ -9,45 +9,6 @@ Built by team **NINEAGENTS** — RBI NFPC Phase 2, Rank #4 nationally
 
 ---
 
-## 📸 Screenshots
-
-> **Note for evaluators**: Screenshot files are in [`docs/screenshots/`](docs/screenshots/). If they appear broken below, open the [live demo](https://hawkeye.nineagents.in) directly — it's faster than waiting for these to load anyway.
-
-<table>
-<tr>
-<td width="50%"><b>Branch Manager Command Center</b><br/>
-<img src="docs/screenshots/01-command-center-hero.png" alt="Command Center: KPI strip, events/sec chart, score histogram, approval queue, dept rollup, audit feed" />
-<sub>Top stat strip · events/sec chart · approval queue · department rollup · 7d×24h heatmap · live audit feed</sub>
-</td>
-<td width="50%"><b>Live event tape (Bloomberg-style)</b><br/>
-<img src="docs/screenshots/03-live-event-tape.png" alt="Live event tape mid-replay with coloured rows" />
-<sub>Every privileged-user action scored in real-time. Rows colour-flash by risk level. ⚠ alert · 📥 bulk-download · 🔓 unauthorized write</sub>
-</td>
-</tr>
-<tr>
-<td width="50%"><b>SHAP factor breakdown</b><br/>
-<img src="docs/screenshots/04-employee-detail-shap.png" alt="SHAP waterfall on Employee Detail" />
-<sub>Top 5 model factors driving this employee's score, with red/green contribution bars</sub>
-</td>
-<td width="50%"><b>LLM investigation memo</b><br/>
-<img src="docs/screenshots/05-narrative-memo.png" alt="Groq narrative memo with audit trail" />
-<sub>Groq <code>gpt-oss-120b</code> generated 4-paragraph memo + audit trail footer. Plain-English first, technical detail second.</sub>
-</td>
-</tr>
-<tr>
-<td width="50%"><b>Graph Explorer with department clustering</b><br/>
-<img src="docs/screenshots/06-graph-explorer-clusters.png" alt="D3 force-directed graph with 5 dept clusters" />
-<sub>D3 force layout. 5 departments arranged in a pentagon. Same-dept users cluster spatially.</sub>
-</td>
-<td width="50%"><b>Roles & permissions matrix</b><br/>
-<img src="docs/screenshots/08-settings-roles-matrix.png" alt="Roles capability matrix on Settings page" />
-<sub>Three roles, capability-gated UI. Click any column header to switch role.</sub>
-</td>
-</tr>
-</table>
-
----
-
 ## 🚀 Live demo
 
 | | |
@@ -259,20 +220,32 @@ FREE-AI guidelines, ITV-2 SSO requirements, and the bank's internal model risk m
 
 ---
 
-## 🔐 Trust & security posture (pre-empts the panel's "but Groq sees your data?" question)
+## 🔐 Trust & security posture
 
-Live system is a demo; the production trust story is on a known path. From [ROADMAP.md](ROADMAP.md):
+The production trust story is on a known path within the **same €8/month CX33 budget**. Full plan in [ROADMAP.md](ROADMAP.md). 4-week sprint to shippable:
 
-| Concern | Today | Roadmap fix | Effort |
+| Concern | Today | Constraint-aware fix | Cost |
 |---|---|---|---|
-| LLM provider sees prompts | Groq cloud API receives prompts (employee_id, score, behaviour summary) | Self-hosted Llama-3 / `gpt-oss` via vLLM on bank's GPU. `narrative_service.py` is provider-agnostic — 30-line swap. | Low |
-| Backend operator could read memory | Standard Linux container | Trusted Execution Environment (Intel TDX / AMD SEV-SNP / Azure Confidential Computing) — memory cryptographically encrypted, not even root can read | Medium |
-| SHAP explanations leak training data | Plain SHAP values | Differential privacy on SHAP factors (ε=0.5 Laplacian noise) — bounds membership-inference attacks per DPDP Act 2023 | Low |
-| Future quantum threat to data-at-rest | AES-256 (vulnerable to harvest-now-decrypt-later) | NIST post-quantum standards (CRYSTALS-Kyber + CRYSTALS-Dilithium) — RBI FREE-AI "crypto-agility" requirement | Medium |
-| Single-bank model misses cross-bank rings | Each bank trains on its own data | Federated learning via Flower / NVIDIA FLARE — 40 PSBs train collectively without exchanging a single transaction | High |
+| Auth bypass for the demo | `PREFLIGHT_MODE=1` | Wire Keycloak SSO into the SPA (1 day, frontend only) + WebAuthn / FIDO2 hardware-key MFA via Keycloak config | 0 |
+| `.env` file as secrets store | 7 secrets in `chmod 600` `.env` | HashiCorp Vault container in compose, dynamic DB credentials, audit on every secret read | 0 |
+| SHAP explanations leak training data | Plain SHAP values | Differential privacy on SHAP factors (ε=0.5 Laplacian noise) — bounds membership-inference per DPDP Act | 0 |
+| Lateral movement on host | Docker bridge network is the trust boundary | mTLS between every container — SPIFFE-style service identity, no implicit trust | 0 |
+| Static model degrades silently | Model trained once on Kaggle | Continuous retraining gated on Evidently AI drift detection, A/B shadow mode, MLflow lineage | 0 |
+| Insiders can probe the model | Untested against adversarial inputs | PGD + FGSM red-team automation (IBM ART) blocking model promotion if evasion succeeds | 0 |
+| Supply-chain attack surface | Standard Docker images | Sigstore Cosign-signed images, SLSA Level 3 provenance, Trivy CVE gating, Gitleaks secrets scanning | 0 |
+| Model lineage opaque | No formal documentation | Google-standard Model Card + AI Bill of Materials per ISO/IEC 23053 | 0 |
+| Zero-label cold start | Supervised LightGBM only | Isolation Forest as second-line unsupervised detector — banks with no labels get useful detection day one, LightGBM kicks in once they have ≥50 incidents | 0 |
+| Macro-anomaly invisible at user level | Per-user scoring only | Prophet time-series forecasting on alert volume — flag organisational-scale anomalies (coordinated attacks, upstream bugs) | 0 |
 
-The pitch line for the panel:
-> *"In production HAWKEYE runs inside a Trusted Execution Environment with a self-hosted LLM, differential-privacy on explanations, and quantum-safe encryption — the bank's data never leaves the bank's perimeter, even from us. Federated learning roadmap connects 40+ PSBs without any of them seeing each other's data."*
+What's **honestly out of reach** on the current CX33 budget (listed in ROADMAP §2):
+- True T-HGNN (PyTorch+PyG needs ~16 GB RAM for training)
+- SimCLR contrastive pre-training (needs GPU)
+- Self-hosted LLM (needs GPU; Llama-3-8B CPU-only is 5-10 s/token)
+- Trusted Execution Environment (depends on whether Hetzner offers Confidential VMs at the same price tier — under investigation)
+- Federated learning (needs multi-tenant infra + bank partnerships)
+
+The pitch line for the panel after the 4-week sprint:
+> *"HAWKEYE ships with FIDO2 SSO, Vault-managed secrets, differentially-private SHAP (ε=0.5), continuous Evidently-AI drift detection, automated PGD/FGSM adversarial testing, hybrid supervised + zero-label-cold-start detection, Prophet macro-anomaly forecasting, mTLS service mesh, Sigstore-signed SLSA Level 3 builds — all on a single Hetzner CX33 at ₹720/month. Total cost of ownership for a single-bank deployment: under ₹10,000/year."*
 
 ---
 

@@ -1,329 +1,272 @@
-# HAWKEYE — Roadmap & high-impact tech upgrades
+# HAWKEYE — Roadmap (constraint-aware)
 
-The current live system at <https://hawkeye.nineagents.in> covers the
-end-to-end demo. This document is what we'd add **next** — a mix of
-Round 1 commitments not yet delivered and "new-age" upgrades that turn
-the pitch from "AI fraud detector" into "bank-grade trustworthy AI".
+The current production deployment runs on a **Hetzner CX33 (4 vCPU / 8 GB / 80 GB) at ~€8/month with no backups, scoring against the Groq cloud LLM**. This document is the path forward **inside those constraints** — no GPU spend, no upgraded VPS tier, no managed services.
 
-Each section: **What it is · Why it matters · Effort · Implementation
-sketch · Pitch line for the panel.**
+Everything in §1 ships on the existing box. Everything in §2 is honestly out of reach without spending more — listed for transparency, not as a near-term plan.
 
 ---
 
-## Tier 1 — Bank-grade trust (these unlock real customer conversations)
+## §1 — What we CAN ship on the current CX33 (zero extra cost)
 
-### 1.1 ⭐ Trusted Execution Environment (TEE) for the scoring pipeline
+Sorted by impact-per-effort. Every item below has been costed against the 8 GB RAM / 4 vCPU budget.
 
-**What it is** — Run the backend container inside an Intel SGX / AMD SEV-SNP /
-Azure Confidential Computing enclave. Memory is encrypted; even root on the
-host (and the cloud admin, and us) can't read what's inside.
+### 1.1 ⭐ Wire Keycloak SSO into the SPA (drop `PREFLIGHT_MODE=1`)
 
-**Why it matters** — Banks won't ship privileged-user behaviour data to a
-SaaS where the operator could theoretically read it. TEEs make "we can't see
-your data even if we wanted to" a *cryptographic* guarantee, not a policy.
+**What** — Add `keycloak-js` to the React SPA so it redirects to Keycloak on first visit, gets a JWT, uses it for API + WebSocket calls. Then flip `PREFLIGHT_MODE=0` in `/opt/hawkeye/.env` so the backend enforces auth.
 
-**Effort** — Medium. Azure/Hetzner now offer confidential VMs out-of-the-box
-(Intel TDX or AMD SEV-SNP). Refactor needed: backend image rebuilt as a
-confidential container. Performance hit ~5-10% on inference.
+**Why it matters** — Today anyone with the URL is in. Real auth is the difference between a demo and a product. Backend already validates JWT properly; only the SPA flow is missing.
 
-**Pitch line**
-> *"HAWKEYE runs inside a Trusted Execution Environment. Data is encrypted
-> in-memory; even our own DevOps team cannot read it. Cryptographically
-> attested by hardware. Bank's keys, bank's data, full stop."*
+**Cost** — 0. Keycloak already running in compose. Frontend code only.
 
-**Implementation sketch**
-- Migrate VPS to Hetzner Confidential Computing tier (Intel TDX) OR Azure
-  Confidential Container Instances
-- Add TEE-attestation endpoint `/api/attest` that returns the SGX/SEV
-  measurement quote
-- Document in DEPLOYMENT.md as the production path for any real-data deployment
+**Effort** — 1 day.
+
+**Pitch line**: *"FIDO2-capable SSO via Keycloak 23. JWT-validated API + WebSocket. Role from JWT claim, not in-memory toggle."*
 
 ---
 
-### 1.2 ⭐ Self-hosted LLM (replace Groq cloud API with on-premise model)
+### 1.2 ⭐ Differential privacy on SHAP explanations
 
-**What it is** — Run the narrative LLM (`llama-3.1-70B`, `mistral-large`,
-`gpt-oss-120b`) on the bank's own GPU via vLLM, Ollama, or Triton. No
-external API call. Drop-in replacement for the Groq SDK.
+**What** — Add Laplacian noise (ε=0.5) to the SHAP factor values shown in the audit trail. Model still scores accurately; the audit trail can't be inverted to reconstruct training rows.
 
-**Why it matters** — Currently every alert sends a prompt to api.groq.com.
-The prompt contains employee_id, score, behaviour summary. Banks regard this
-as data exfiltration even if Groq's TOS says "no training". Self-hosted = zero
-external network call = compliance officer signs immediately.
+**Why it matters** — DPDP Act 2023 + RBI FREE-AI flag membership-inference attacks. SHAP values leak training-set information. ε-DP provably bounds the leak.
 
-**Effort** — Low to medium. The narrative_service.py is already
-provider-agnostic. Swapping the AsyncGroq client for an OpenAI-compatible
-vLLM endpoint is ~30 lines. The bigger lift is provisioning the GPU box (1×
-A100 80GB serves 8B-70B models comfortably).
+**Cost** — 0. ~30 lines in `scoring._shap_factors`.
 
-**Pitch line**
-> *"No data ever leaves the bank's perimeter. Our LLM runs on a GPU inside
-> your data centre. Zero outbound network calls during scoring. Zero logs at
-> any third-party LLM provider. Air-gap capable."*
+**Effort** — Half a day.
 
-**Implementation sketch**
-- New `narrative_service_local.py` that talks to a vLLM OpenAI-compatible
-  endpoint at `http://llm-gpu:8000/v1`
-- Env var `NARRATIVE_PROVIDER=groq|local` selects at boot
-- Add docker-compose.gpu.yml overlay that runs vLLM + nvidia-runtime
-- Document the self-hosted recipe in DEPLOYMENT.md
+**Pitch line**: *"Differentially-private explanations (ε=0.5 Laplacian noise on SHAP). Bounds membership-inference attacks per DPDP Act 2023."*
 
 ---
 
-### 1.3 Differential privacy on the SHAP explanations
+### 1.3 ⭐ HashiCorp Vault for secrets (replace `.env` file)
 
-**What it is** — Add ε-differential noise to the SHAP factor values shown
-in the audit trail. The model still scores accurately; the audit trail
-can't be inverted to reconstruct individual training rows.
+**What** — Add a Vault container to compose. Migrate the 7 secrets (Groq, Postgres, Neo4j, MinIO, Keycloak admin, Grafana admin, Postgres URL) from `.env` to Vault KV-v2. Backend reads from Vault on startup via `python-hvac`.
 
-**Why it matters** — DPDP Act 2023 + RBI FREE-AI explicitly call out
-membership-inference attacks. SHAP factors leak information about the
-training set. Differential privacy provably bounds that leak.
+**Why it matters** — `.env` files are the #1 leaked-secret vector. Vault gives you audit trails on every secret access, automatic rotation, dynamic database credentials.
 
-**Effort** — Low. Add Laplacian noise scaled by the SHAP value's sensitivity
-in `scoring._shap_factors`. ~20 lines.
+**Cost** — 0. Vault dev-mode container is ~50 MB RAM. Fits comfortably.
 
-**Pitch line**
-> *"Even our model's explanations are differentially-private (ε=0.5).
-> Membership-inference attacks are bounded. DPDP Act compliant by design."*
+**Effort** — 1 day.
+
+**Pitch line**: *"Secrets in HashiCorp Vault — not `.env` files. Every read audited. Dynamic database credential rotation."*
 
 ---
 
-### 1.4 Quantum-safe cryptography for data-at-rest
+### 1.4 ⭐ Continuous retraining + drift detection (Evidently AI)
 
-**What it is** — Replace AES-256 (vulnerable to quantum) with post-quantum
-algorithms (CRYSTALS-Kyber for KEM, CRYSTALS-Dilithium for signatures —
-the NIST PQC standards finalised 2024). Used for Postgres encryption,
-Neo4j volume encryption, model weights at rest.
-
-**Why it matters** — RBI FREE-AI Aug 2025 framework specifically calls out
-"crypto-agility" as a required posture. "Harvest now, decrypt later"
-attacks mean even today's traffic is at risk if a quantum computer arrives
-in 2030+.
-
-**Effort** — Medium. Most Postgres / Linux LUKS / cloud-provider KMS now
-offer hybrid (AES + Kyber) modes. Configuration change, not a rewrite.
-
-**Pitch line**
-> *"Quantum-safe by 2026 — CRYSTALS-Kyber for key encapsulation,
-> CRYSTALS-Dilithium for signatures. Compliant with NIST PQC standards.
-> Future-proof against harvest-now-decrypt-later attacks."*
-
----
-
-## Tier 2 — Round 1 tech we promised but haven't built yet
-
-### 2.1 ⭐ Temporal Heterogeneous Graph Neural Network (T-HGNN)
-
-**What it is** — A PyTorch Geometric model that ingests the live Neo4j graph
-as a heterogeneous typed graph (Employee, System, Customer, Transaction nodes;
-ACCESSED, AUTHORIZED, MODIFIED edges) with temporal attention. Outputs an
-embedding per (employee, time) → fed alongside LightGBM as a third model in
-the blend.
-
-**Why it matters** — Round 1 headline claim. Currently we use Neo4j to *store*
-the graph and compute *aggregate* graph features for LightGBM (g_ncp, g_top1
-etc). A true T-HGNN forward-pass picks up patterns aggregates miss — e.g.
-"this employee accessed System A, then System B 30 min later, then System C
-during off-hours" sequence patterns that destroy when summarised to counts.
-
-**Effort** — High. ~2-3 weeks of work:
-- Snapshot Neo4j graph at training time → PyG HeteroData
-- Implement T-HGNN architecture (HGT or HAN with temporal positional encoding)
-- Train on labeled mules from RBI NFPC
-- Distill to ONNX for sub-100ms inference
-- Add as third model in the blend (`blend_weights: m1=0.40, m2=0.35, thgnn=0.25`)
-- Update bootstrap assertion to validate the new artifact
-
-**Pitch line**
-> *"Temporal Heterogeneous Graph Neural Network for sequence-aware detection.
-> Catches multi-step lateral movement (System A → B → C across hours)
-> that flat ensembles miss. PyG-based, ONNX-distilled, sub-100ms inference."*
-
----
-
-### 2.2 SimCLR contrastive self-supervised pre-training
-
-**What it is** — Pre-train the user-embedding head on UNLABELED behaviour
-sequences using SimCLR (or BYOL). Each user's day is a "view"; two augmented
-views of the same user's day should embed close, two random users far. After
-pre-training, fine-tune the LightGBM classifier on whatever small labeled
-fraud set the bank has.
-
-**Why it matters** — Round 1 promised "zero-label cold start". A bank with no
-historical fraud labels can't use our supervised LightGBM on day one. SimCLR
-gives them a useful representation from their own unlabeled data, then a tiny
-labeled set (50 incidents) fine-tunes to bank-specific drift.
-
-**Effort** — Medium-high. ~1-2 weeks:
-- Define augmentations (time-jitter, channel-mask, amount-quantise) that
-  preserve fraud signature
-- SimCLR training loop in PyTorch on the 6-month behaviour windows
-- Project embeddings to 128-dim → feed as features to LightGBM
-- Document the bootstrapping playbook for "first 50 labels" use-case
-
-**Pitch line**
-> *"Zero-label cold start: SimCLR contrastive pre-training learns each user's
-> 'normal' from their own unlabeled behaviour. Fine-tunes on as few as 50
-> labeled incidents per bank. Day-1 deployable to any new bank."*
-
----
-
-### 2.3 Wire Keycloak SSO into the SPA (drop PREFLIGHT_MODE)
-
-**What it is** — Add `keycloak-js` to the React SPA so it redirects to the
-Keycloak login page on first visit, gets a JWT, and uses it for API + WS calls.
-Then flip `PREFLIGHT_MODE=0` in `/opt/hawkeye/.env` to enforce auth on the
-backend.
-
-**Why it matters** — Real auth is the difference between a demo and a product.
-Backend already validates JWT properly via `auth.py`; just the SPA flow is
-missing. ~1 day.
-
-**Effort** — Low.
-
-**Implementation sketch**
-- `npm install keycloak-js`
-- `frontend/src/lib/auth.ts` — Keycloak singleton with `init({onLoad: 'login-required'})`
-- `frontend/src/lib/api.ts` — bearer token interceptor reading from Keycloak instance
-- Role chip in TopStatusBar reads from JWT claim instead of zustand store
-- Backend: flip PREFLIGHT_MODE=0, restart
-
----
-
-## Tier 3 — Operational maturity
-
-### 3.1 Continuous retraining + drift detection
-
-**What it is** — A nightly cron in the backend that:
+**What** — Nightly cron in the backend that:
 1. Pulls last-24h labeled outcomes from `audit_log` (analyst-confirmed alerts → positives, dismissed → negatives)
-2. Detects feature distribution drift via Evidently AI / Alibi Detect
-3. If drift > threshold OR labels accumulated > 100, kicks off a retrain in the background
-4. Logs to MLflow, A/B tests new model vs current via shadow mode for 48h
-5. Auto-promotes if metrics hold
+2. Detects feature distribution drift via Evidently AI (KS tests on each of the 146 features)
+3. If drift > threshold OR ≥ 100 fresh labels → kicks off a retrain in the background
+4. Logs to MLflow (already running), A/B shadow-mode for 48h, auto-promotes if metrics hold
 
-**Why it matters** — Models degrade. Insider tactics evolve. A static model
-trained Q1 2026 will be at 80% of original AUC by Q4. Without continuous
-retraining, the system's "live" claim is hollow at month 3.
+**Why it matters** — Static models degrade. Insider tactics evolve. Without this, the "live" claim is hollow at month 3.
 
-**Effort** — Medium. ~1 week.
+**Cost** — 0. Evidently AI is a Python lib (~20 MB). LightGBM retrain is CPU-only and fits in 4 GB peak (8 GB box has the headroom).
 
-**Pitch line**
-> *"Continuous retraining with drift detection. Models stay sharp; no manual
-> intervention. Every retrain logged to MLflow with A/B shadow validation."*
+**Effort** — 1 week.
+
+**Pitch line**: *"Continuous retraining gated on Evidently AI drift detection. A/B shadow-mode validation. MLflow lineage on every model promotion."*
 
 ---
 
-### 3.2 Adversarial robustness testing (red team automation)
+### 1.5 ⭐ Adversarial robustness testing (PGD/FGSM via ART)
 
-**What it is** — Integrate ART (Adversarial Robustness Toolbox) or Foolbox.
-Generate FGSM / PGD perturbations of mule transaction patterns; verify the
-model still flags them. Log any successful evasion as a model bug.
+**What** — Integrate IBM's Adversarial Robustness Toolbox. Generate FGSM and PGD perturbations of mule transaction patterns. Verify the model still flags them at acceptable recall. Log any successful evasion as a model bug.
 
-**Why it matters** — Sophisticated insiders will probe the model. RBI
-FREE-AI requires "adversarial testing pipeline" specifically.
+**Why it matters** — Sophisticated insiders WILL probe the model. RBI FREE-AI specifically calls out "adversarial testing pipeline" as required.
 
-**Effort** — Medium. ~1 week.
+**Cost** — 0. ART runs locally on the trained LightGBM model.
 
-**Pitch line**
-> *"Continuous adversarial red-team testing — every model release passes
-> through automated PGD/FGSM evasion attempts before promotion."*
+**Effort** — 4-5 days.
+
+**Pitch line**: *"Continuous adversarial red-team testing — every model release passes through automated PGD + FGSM evasion attempts before promotion."*
 
 ---
 
-### 3.3 Federated learning across multiple banks
+### 1.6 mTLS between containers
 
-**What it is** — Each bank trains its own model locally on its own data.
-Periodically the model gradients (not the data) are aggregated via Flower
-or NVIDIA FLARE → a global model improves without any bank exposing its
-data. Each bank then fine-tunes the global model locally.
+**What** — Generate self-signed CA + per-service certs at compose-up time. Mount into each container. Update FastAPI / Postgres / Neo4j / Redis / Kafka clients to require mutual TLS.
 
-**Why it matters** — Industry-wide insider patterns (mule rings spanning
-multiple banks) are invisible to single-bank models. Federated learning lets
-40 PSBs collectively train a model none could train alone — without sharing
-a single transaction.
+**Why it matters** — Defense-in-depth. Today the Docker bridge network is the trust boundary; if any service is compromised, lateral movement is open. mTLS forces every cross-service call to prove identity cryptographically.
 
-**Effort** — High. ~3-4 weeks. Requires Flower deployment, multi-tenant
-auth on the aggregator, careful attention to differential privacy budgets
-across rounds.
+**Cost** — 0. Some CPU overhead on TLS handshakes (~2-5%).
 
-**Pitch line**
-> *"Federated learning across 40+ scheduled commercial banks. Cross-bank
-> threat intelligence without cross-bank data movement. DPDP-compliant
-> privacy budgets enforced per round. The first national-scale insider
-> threat model — no single bank could train it alone."*
+**Effort** — 3-4 days (the wiring is fiddly per-service).
+
+**Pitch line**: *"Zero-trust service mesh — every internal call is mTLS-authenticated. SPIFFE-style service identity, no implicit network trust."*
 
 ---
 
-### 3.4 Model card + AI Bill of Materials (AIBOM)
+### 1.7 Rate limiting + WAF-style API hardening
 
-**What it is** — Formal Google Model Card for HAWKEYE LightGBM blend
-(intended use, training data, eval metrics, ethical considerations, known
-limitations). Plus an AIBOM listing every model version, training data
-checksum, dependency version (akin to SBOM for software).
+**What** — `slowapi` middleware on FastAPI: 100 req/min per IP, 1000 req/min per JWT user. Add OWASP top-10 security headers (CSP, X-Frame-Options, X-Content-Type-Options — most are at host nginx already, this tightens them). Block SQL-injection patterns at the edge.
 
-**Why it matters** — RBI FREE-AI calls out "model lineage" as required
-documentation. SOC2 + ISO/IEC 23053 reference AIBOMs as a control. Easy
-audit win.
+**Why it matters** — Public endpoint deserves DDoS resistance + injection guards. Free hardening.
 
-**Effort** — Low. ~2 days.
+**Cost** — 0. Slowapi is ~10 KB.
 
----
+**Effort** — 1-2 days.
 
-## Tier 4 — Future / 6+ months out
-
-### 4.1 Multi-modal detection (voice + text + behaviour)
-
-Round 1 mentioned this. Voice-stress detection on bank call recordings,
-text sentiment on internal chat, combined with the behavioural model.
-Pitch is strong; execution is research-grade.
-
-### 4.2 Deepfake KYC detection (extension to customer-facing fraud)
-
-Out of scope for HAWKEYE proper but pitched as "future scope". Not in the
-critical path.
-
-### 4.3 Confidential containers + Intel TDX (defense-in-depth)
-
-Layered on top of Tier 1.1. Each container in compose runs in its own
-TDX-attested isolation. Diminishing returns over the TEE base case unless
-threat-modelled around lateral movement on the host.
+**Pitch line**: *"Per-user + per-IP rate limiting. OWASP top-10 hardened. SQL-injection patterns blocked at the edge."*
 
 ---
 
-## How to prioritise (panel asks: "if you had 4 weeks, what would you do?")
+### 1.8 ⭐ AIBOM + Model Card (formal AI lineage docs)
 
-The honest answer:
+**What** — Generate a formal Google Model Card for the HAWKEYE LightGBM blend (intended use, training data, eval metrics, ethical considerations, known limitations) and an AI Bill of Materials listing every model version + training data checksum + dependency version (akin to SBOM for software).
 
-| Week | Focus | Why |
+**Why it matters** — RBI FREE-AI requires "model lineage" documentation. SOC 2 + ISO/IEC 23053 reference AIBOMs as a control. Easy audit win.
+
+**Cost** — 0. Markdown.
+
+**Effort** — 2 days.
+
+**Pitch line**: *"Formal Model Card per Google standards + AI Bill of Materials per ISO/IEC 23053. Every model release tracked, every training-data hash recorded."*
+
+---
+
+### 1.9 Supply-chain hardening in CI (Trivy + Gitleaks + Cosign + SLSA)
+
+**What** — Add four free GitHub Action steps to `ci.yml`:
+- **Trivy** — scan every container image for known CVEs, fail CI if HIGH/CRITICAL
+- **Gitleaks** — scan every PR for committed secrets
+- **Cosign** — sign container images with Sigstore
+- **SLSA provenance** — generate Level 3 build provenance attestation
+
+**Why it matters** — Supply-chain attacks (xz-utils, SolarWinds) are the new normal. These four steps make the repo verifiably tamper-evident.
+
+**Cost** — 0. All free GitHub Action steps.
+
+**Effort** — 1 day.
+
+**Pitch line**: *"Sigstore-signed images, SLSA Level 3 build provenance, Trivy CVE gating, Gitleaks secrets scanning. Supply-chain attack-proof CI."*
+
+---
+
+### 1.10 Compliance posture dashboard (in-app)
+
+**What** — A new `/compliance` page in the SPA showing real-time compliance status: DPDP Act check (DP enabled? ✅), FREE-AI human-in-the-loop check (audit trail populated? ✅), retention policy (alerts >X days deleted? ✅), key rotation age (Vault leases <90d? ✅), backup status, etc.
+
+**Why it matters** — Auditors love a dashboard they can screenshot. Compliance is a story you tell, not a binary state.
+
+**Cost** — 0. Pure frontend + 1 backend endpoint.
+
+**Effort** — 2 days.
+
+**Pitch line**: *"Real-time compliance posture page. DPDP Act, RBI FREE-AI, ISO 27001, SOC 2 readiness — visible to the CISO in one screen."*
+
+---
+
+### 1.11 WebAuthn / FIDO2 hardware-key login (via Keycloak)
+
+**What** — Enable WebAuthn in the Keycloak realm so analysts/supervisors/managers can authenticate with YubiKeys, Windows Hello, Touch ID. Pure config change in `realm-export.json`.
+
+**Why it matters** — Bank security teams *love* hardware-key MFA. Phishing-resistant. RBI is pushing for it post-2024 fraud surge.
+
+**Cost** — 0. Keycloak supports it natively.
+
+**Effort** — Half a day (after 1.1 is done).
+
+**Pitch line**: *"Phishing-resistant FIDO2 / WebAuthn hardware-key MFA. YubiKey, Windows Hello, biometric — all supported via Keycloak."*
+
+---
+
+### 1.12 Postgres `pgvector` for narrative similarity
+
+**What** — Enable `pgvector` extension in Postgres. Embed every Groq-generated narrative with `sentence-transformers/all-MiniLM-L6-v2` (90 MB CPU model). Store embeddings in `narratives.embedding`. New endpoint: `/narratives/similar/{id}` — analysts can find historically-similar cases.
+
+**Why it matters** — Investigators repeatedly ask "have we seen this pattern before?". Vector search makes that one click.
+
+**Cost** — 0. MiniLM CPU model is ~90 MB, fits in backend container. Postgres+pgvector is open source.
+
+**Effort** — 2-3 days.
+
+**Pitch line**: *"Vector-search across investigation memos via pgvector + sentence-transformer embeddings. Find historically-similar cases in one query."*
+
+---
+
+### 1.13 Isolation Forest as second-line anomaly detector (zero-label)
+
+**What** — Train an unsupervised Isolation Forest on the live Redis feature snapshots. Flag any user whose IF anomaly score crosses a threshold even when LightGBM doesn't. Pitch as the **partial answer to "zero-label cold start"** — a new bank with no labels gets IF anomaly detection on day one; LightGBM kicks in once they have ≥50 labeled incidents.
+
+**Why it matters** — IF is the closest free thing to SimCLR (which needs GPU). Same headline ("zero-label day-one detection"), 1/100th the implementation cost.
+
+**Cost** — 0. sklearn IsolationForest, ~5 MB.
+
+**Effort** — 2 days.
+
+**Pitch line**: *"Hybrid detection: supervised LightGBM (labeled banks) + unsupervised Isolation Forest (zero-label cold-start). New banks get useful detection day one — without contrastive pre-training."*
+
+---
+
+### 1.14 Time-series forecasting on alert volume (Prophet)
+
+**What** — Fit a Prophet model on the historical alert-rate time series. Show "expected alert volume next 7 days" on the Manager dashboard. Flag anomalies when actual >3σ from forecast.
+
+**Why it matters** — Macro-anomaly: "you're seeing 10× normal alert volume today" is itself a signal of something organisational happening (a coordinated attack, a bug in upstream system, etc.). Catches what individual-user models miss.
+
+**Cost** — 0. Prophet runs CPU.
+
+**Effort** — 2-3 days.
+
+**Pitch line**: *"Prophet time-series forecasting on alert volume. Macro-anomaly detection — catches coordinated attacks invisible at the user level."*
+
+---
+
+## §2 — What we honestly CAN'T ship on the current CX33
+
+Listed for transparency. These need money or a different architecture.
+
+| Item | Why we can't ship it on CX33 | What it would take |
 |---|---|---|
-| **Week 1** | Self-hosted LLM (Tier 1.2) + Keycloak SSO (Tier 2.3) | Removes the two biggest "but you're sending data to Groq" / "but there's no real auth" objections in a single sprint. Both are low-effort. |
-| **Week 2** | TEE deployment (Tier 1.1) | Massive trust narrative win. Move backend to a confidential VM. |
-| **Week 3-4** | T-HGNN (Tier 2.1) — actually deliver the Round 1 headline | Now you can pitch "the only deployed banking insider-threat system with a temporal graph neural network." That's defensible. |
-
-After that:
-
-| Sprint 2 (weeks 5-8) | Continuous retraining + drift detection (3.1), adversarial testing (3.2), differential privacy on SHAP (1.3), model card + AIBOM (3.4) |
-|---|---|
-| Sprint 3 (weeks 9-12) | SimCLR cold-start (2.2), federated learning prototype with 2 PSB partners (3.3) |
-| Sprint 4 (weeks 13-16) | Quantum-safe crypto (1.4), production hardening, SOC 2 Type II prep |
+| **T-HGNN (PyTorch Geometric)** | PyTorch + PyG add ~2 GB to the backend image (currently 1.8 GB). Training on the real RBI dataset needs ~16 GB RAM minimum and ideally a GPU — neither fits CX33. | Train on Kaggle/Colab (free GPU), distill to ONNX for serve-time. Even ONNX inference adds ~500 MB to backend RAM — would need to replace LightGBM inference, not augment. **Estimated extra resource: needs CX43 (16 GB RAM, ~€16/mo) for serving.** |
+| **SimCLR contrastive pre-training** | Needs a GPU for the contrastive loss to converge in reasonable time. CX33 CPU-only training would take days for even a small embedding head. | Same as T-HGNN — train on Kaggle, serve frozen embeddings. Replaces Isolation Forest (1.13 above) with a stronger model. |
+| **Self-hosted LLM (Llama-3 / gpt-oss-120b)** | Llama-3-8B needs ~16 GB RAM minimum CPU-only with 5-10s/token (terrible for a "live" demo). 70B models or `gpt-oss-120b` need a GPU. | Cheapest viable: a Hetzner GPU instance — currently RTX 6000 Ada at ~€280/mo. Or external API (defeats the "no data leaves bank" pitch). **Stay on Groq for now; 1.2 (DP on SHAP) gives partial answer.** |
+| **Trusted Execution Environment (TEE)** | Hetzner CX33 doesn't offer Intel SGX/TDX or AMD SEV-SNP. Confidential VMs are a separate product. | Hetzner Confidential VM tier is roughly the same price (~€10/mo). **Migration: provision a new confidential VM, deploy.sh works as-is, switch DNS.** Could do this without spending more money — just changing tier. **Worth investigating whether Hetzner offers TDX.** |
+| **Federated learning across banks** | Requires multi-tenant infrastructure, multiple banks consenting, a coordinator with its own infra. Not a code-only change. | Out of reach as a single-VPS system. Pitch as Phase-2 with NPCI / IBA partnership. |
+| **Quantum-safe crypto for data-at-rest** | Postgres native PQC support is still preview-stage. Hetzner's volume encryption uses AES-256. | Wait for Postgres 17 PQC GA + Hetzner adoption. Too speculative for now — keep on roadmap as the 2027 item. |
+| **Daily Hetzner backups** | Costs ~€1.60/mo extra. You explicitly declined this. | If demoed to a real bank → enable in 1 click, ~€1.60/mo |
+| **Multi-region failover** | Requires multiple VPSes + a load balancer in front. | ~€20/mo minimum. Out of scope for the demo. |
+| **Apache Flink** | JVM heap requirements alone are 2-4 GB. Adds ~3 GB to the stack. CX33 would tip into swap. | Move to CX43 (16 GB) for ~€16/mo. Probably not worth it — direct Kafka consumer in FastAPI handles 500 ev/s comfortably. |
 
 ---
 
-## Tech buzzwords that test well in panel pitches (use sparingly, deploy actually)
+## §3 — Suggested 4-week sprint plan within constraints
 
-- **Trusted Execution Environment (TEE)** — Intel SGX / AMD SEV-SNP / Azure Confidential Computing
-- **Self-hosted LLM** / "no data leaves the bank perimeter"
-- **Differential privacy (ε)** — quantified privacy guarantee
-- **Federated learning** — multi-bank without data sharing
-- **Quantum-safe / post-quantum cryptography (PQC)** — NIST CRYSTALS-Kyber/Dilithium
-- **Model card + AIBOM** — formal model documentation
-- **Adversarial robustness (PGD/FGSM)** — red-team-tested model
-- **Drift detection (Evidently / Alibi)** — continuous health monitoring
-- **Confidential containers (Kata + TDX)** — layered runtime isolation
-- **Zero-trust architecture (mTLS + SPIFFE)** — service-to-service identity
-- **Crypto-agility** — RBI FREE-AI buzzword for "swappable crypto suite"
+Picking the highest panel-impact + lowest effort items from §1:
 
-The pattern that wins: name a real industry standard, demonstrate
-implementation in our codebase, point at where it's wired up. Anything
-else is hand-waving.
+| Week | Items | Headline pitch unlock |
+|---|---|---|
+| **Week 1** | 1.1 (Keycloak SSO) + 1.2 (DP on SHAP) + 1.11 (WebAuthn) | "FIDO2-MFA SSO + differentially-private explanations" |
+| **Week 2** | 1.3 (Vault) + 1.7 (rate limiting + headers) + 1.9 (CI hardening) | "HashiCorp Vault secrets, OWASP-hardened, Sigstore-signed images, SLSA Level 3" |
+| **Week 3** | 1.13 (Isolation Forest) + 1.14 (Prophet) | "Hybrid supervised + unsupervised detection, zero-label day-one + macro-anomaly forecasting" |
+| **Week 4** | 1.4 (drift + retraining) + 1.5 (adversarial testing) + 1.8 (Model Card + AIBOM) | "Continuous retraining gated on Evidently drift, ART adversarial-tested, formal Model Card + AIBOM" |
+
+After 4 weeks, every Tier-1 RBI FREE-AI / DPDP / ISO 27001 / SOC 2 talking point is **demonstrably implemented in code**, not just on a slide. The pitch becomes:
+
+> *"HAWKEYE ships with FIDO2 SSO, Vault-managed secrets, differentially-private SHAP explanations (ε=0.5), continuous Evidently-AI drift detection, automated PGD/FGSM adversarial testing, hybrid supervised + zero-label-cold-start detection (Isolation Forest + LightGBM), Prophet-based macro-anomaly forecasting, mTLS service mesh, and Sigstore-signed SLSA Level 3 builds — all in a single Hetzner CX33 instance at ~€8/month. Total cost of ownership for a single-bank deployment: under ₹10,000/year."*
+
+That's a defensible answer to every "is this real or is this a slide?" question.
+
+---
+
+## §4 — Tech buzzwords that test well, mapped to what we can deliver
+
+| Pitch buzzword | Cost-aware delivery |
+|---|---|
+| **Trusted Execution Environment** | Investigate Hetzner Confidential VM tier (might be same price); if not, document as roadmap |
+| **Self-hosted LLM** | Not in budget; partial answer = DP on SHAP (1.2) + audit trail proves Groq sees nothing identifying |
+| **Differential privacy (ε=0.5)** | ✅ ship today (1.2) |
+| **HashiCorp Vault** | ✅ ship today (1.3) |
+| **mTLS service mesh** | ✅ ship today (1.6) |
+| **WebAuthn / FIDO2** | ✅ ship today (1.11) |
+| **Sigstore Cosign + SLSA Level 3** | ✅ ship today (1.9) |
+| **Continuous adversarial red-team testing** | ✅ ship today (1.5) |
+| **Evidently AI drift detection** | ✅ ship today (1.4) |
+| **AI Bill of Materials (AIBOM)** | ✅ ship today (1.8) |
+| **Zero-label cold start** | Partial — Isolation Forest (1.13). Full SimCLR needs GPU. |
+| **Federated learning** | Pitch as Phase-2 with NPCI partnership; not deliverable on single VPS |
+| **Quantum-safe crypto** | 2027 roadmap item; cite NIST PQC standards |
+| **Vector search for similar cases** | ✅ ship today (1.12) |
+| **Macro-anomaly forecasting** | ✅ ship today (1.14) |
