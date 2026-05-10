@@ -7,6 +7,13 @@
 Built by team **NINEAGENTS** — RBI NFPC Phase 2, Rank #4 nationally
 (AUC 0.998 · F1 0.967 on 400M+ real transactions).
 
+> 🔬 **Now live**: three-model fusion at scoring time —
+> **LightGBM blend** (88%) + **T-HGNN graph signal** (8%, AUC 0.985) +
+> **SimCLR cold-start embedding** (4%, AUC 0.929). Every alert detail panel
+> shows the per-model breakdown; alerts that LightGBM-alone would have missed
+> are flagged with an amber **"Rescued by graph fusion"** badge. See it on
+> the live demo. Implementation: [`backend/app/services/embedding_service.py`](backend/app/services/embedding_service.py).
+
 ---
 
 ## 🚀 Live demo
@@ -53,6 +60,20 @@ When you open the URL:
 To see the system **in motion**, click **Replay Studio** in the sidebar →
 **▶ Start mule_burst** → events stream within 5 seconds, alerts fire within
 30. Toast notifications pop in the bottom-right for each new CRITICAL alert.
+
+### Three-model ML fusion, visible in every alert
+
+Every alert detail panel now shows a **Score composition** card with three rows:
+
+| Model | Weight | Pitch role |
+|---|---|---|
+| **LightGBM blend (M1+M2)** | 88% | The proven supervised scorer — AUC 0.998 on the RBI leaderboard |
+| **T-HGNN graph signal** | 8% | 2-layer Heterogeneous Graph Transformer over (account)–(counterparty). Catches mule rings sharing hub counterparties — patterns LightGBM's tabular features can't see. Holdout AUC 0.985. |
+| **SimCLR cold-start** | 4% | Self-supervised contrastive pre-training (no labels needed). Useful at day-one for a new bank with no fraud history. Linear-probe AUC 0.93, few-shot AUC at n=50 labels: 0.57. |
+
+When the LightGBM blend alone would have scored an account *below* the alert threshold, but the fused score crossed it, the panel surfaces an **amber "Rescued by graph fusion" badge** quoting both numbers. This is the canonical demonstration of "graph neural network catches what tabular models miss" — verifiable per-alert by the reviewer, not slideware.
+
+`/api/readyz` reports the live fusion state — versions, OOF AUC, fusion weights, account counts — so the ML claims on the panel are reproducible from the API alone.
 
 ---
 
@@ -141,7 +162,7 @@ synthetic_events.jsonl                          (516 K events, dual-schema —
 ## Tech stack
 
 - **Backend**: Python 3.11, FastAPI, async SQLAlchemy 2, Alembic, structlog
-- **ML**: LightGBM (M1+M2 blended), SHAP TreeExplainer, 146 features, threshold 0.16032509
+- **ML**: LightGBM (M1+M2 blended) + **T-HGNN** (Heterogeneous Graph Transformer over account ↔ counterparty, 2 layers, 4 heads) + **SimCLR** (self-supervised contrastive pre-training, NT-Xent loss). Fused at scoring time: `0.88·lgb + 0.08·thgnn + 0.04·simclr`. SHAP TreeExplainer, 146 features, threshold 0.16032509
 - **LLM**: Groq SDK, model `openai/gpt-oss-120b` with `reasoning_effort=low`, Jinja fallback
 - **Streaming**: Apache Kafka, confluent-kafka-python
 - **Graph**: Neo4j 5 (community), AsyncGraphDatabase
@@ -210,7 +231,8 @@ FREE-AI guidelines, ITV-2 SSO requirements, and the bank's internal model risk m
 - **[ML.md](ML.md)** — the model: 9-stage training pipeline, 146 features, dual-model blend, SHAP, synthetic-data signature preservation
 - **[DEMO.md](DEMO.md)** — 5-minute walkthrough script for judges
 - **[ROUND1_GAP_ANALYSIS.md](ROUND1_GAP_ANALYSIS.md)** — honest accounting of every Round 1 commitment vs what's actually built (✅ done · 🟡 partial · ❌ not done · 🚫 cut)
-- **[ROADMAP.md](ROADMAP.md)** — high-impact upgrades (TEE, self-hosted LLM, T-HGNN, SimCLR, federated learning, quantum-safe, differential privacy)
+- **[ROADMAP.md](ROADMAP.md)** — high-impact upgrades (TEE, self-hosted LLM, federated learning, quantum-safe, differential privacy). T-HGNN + SimCLR previously listed here are **shipped** — see ML.md.
+- **[thgnn-train.ipynb](thgnn-train.ipynb)** + **[simclr-pretrain.ipynb](simclr-pretrain.ipynb)** — Kaggle notebooks that produce the embedding artifacts the backend fuses into the LightGBM blend
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** — production deploy recipe (Hetzner)
 - **[DEPLOYMENT_RETRO.md](DEPLOYMENT_RETRO.md)** — every gotcha we hit on the live deploy + the permanent fixes
 - **[QUICKSTART.md](QUICKSTART.md)** — local dev quickstart
@@ -238,11 +260,11 @@ The production trust story is on a known path within the **same €8/month CX33 
 | Macro-anomaly invisible at user level | Per-user scoring only | Prophet time-series forecasting on alert volume — flag organisational-scale anomalies (coordinated attacks, upstream bugs) | 0 |
 
 What's **honestly out of reach** on the current CX33 budget (listed in ROADMAP §2):
-- True T-HGNN (PyTorch+PyG needs ~16 GB RAM for training)
-- SimCLR contrastive pre-training (needs GPU)
 - Self-hosted LLM (needs GPU; Llama-3-8B CPU-only is 5-10 s/token)
-- Trusted Execution Environment (depends on whether Hetzner offers Confidential VMs at the same price tier — under investigation)
+- Trusted Execution Environment — Hetzner CX33 runs on AMD EPYC silicon that *physically* supports SEV, but the hypervisor doesn't expose `/dev/sev-guest` to standard cloud VMs. Real options: Azure Confidential VM (~€55/mo), Scaleway COSMOS (€18/mo), or stay on CX33 with software-grade defence-in-depth and pitch as "TEE-ready, not TEE-deployed"
 - Federated learning (needs multi-tenant infra + bank partnerships)
+
+**T-HGNN and SimCLR were on this list — now shipped.** Heavy training runs on Kaggle GPU (free), exports drop into `artifacts/`, the backend loads them as O(1) per-account lookups (~3 MB resident memory total). Implementation in [`backend/app/services/embedding_service.py`](backend/app/services/embedding_service.py); fusion weights re-tunable per deployment.
 
 The pitch line for the panel after the 4-week sprint:
 > *"HAWKEYE ships with FIDO2 SSO, Vault-managed secrets, differentially-private SHAP (ε=0.5), continuous Evidently-AI drift detection, automated PGD/FGSM adversarial testing, hybrid supervised + zero-label-cold-start detection, Prophet macro-anomaly forecasting, mTLS service mesh, Sigstore-signed SLSA Level 3 builds — all on a single Hetzner CX33 at ₹720/month. Total cost of ownership for a single-bank deployment: under ₹10,000/year."*

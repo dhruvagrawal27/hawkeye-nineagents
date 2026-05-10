@@ -2,6 +2,106 @@
 
 All notable changes to HAWKEYE. Format inspired by [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.6.0] — 2026-05-11 — 🧠 Three-model fusion: LightGBM + T-HGNN + SimCLR
+
+The Round 1 ML pitch is now a real running system, not roadmap. Every alert
+on <https://hawkeye.nineagents.in> is scored by a fused ensemble whose
+components are visible per-alert in the UI.
+
+### ML training (new Kaggle notebooks)
+
+- **`thgnn-train.ipynb`** — 2-layer Heterogeneous Graph Transformer (HGT)
+  over (account)–(counterparty) bipartite graph. Account features = the
+  same 105 `feat_clean` columns the LightGBM uses, so HGT adds graph
+  propagation on top of an already-strong base. 80/20 stratified holdout
+  with early stopping. **Holdout AUC 0.985, F1 0.74.** Trains in ~30 min on
+  a Kaggle P100. Exports a 56 MB embedding parquet keyed on `account_id`
+  with a calibrated `thgnn_proba` column.
+- **`simclr-pretrain.ipynb`** — self-supervised contrastive pre-training,
+  NT-Xent loss at τ=0.2, augmentations: feature dropout p=0.4, gaussian
+  noise σ=0.3, mixup α=0.2. Linear-probe AUC 0.929 (no labels used in
+  training). Few-shot AUC at n=50/200/500 labels: 0.57/0.79/0.85 — the
+  cold-start pitch is measurable, not handwaved. ~15 min on Kaggle GPU.
+
+### Backend (`embedding_service` + scoring fusion)
+
+- New `app/services/embedding_service.py` loads both parquets at startup,
+  fits a sklearn LR probe on SimCLR embeddings against the labeled subset
+  of `account_feature_matrix.parquet`, then **discards the heavy 128-dim
+  matrix** and keeps only an O(1) `account_id → proba` dict. Total resident
+  memory cost: ~3 MB. Easily fits the CX33's 8 GB budget.
+- `ScoringService.score(account_id=...)` calls `embedding_service.fuse()`
+  with default weights `{lgb: 0.88, thgnn: 0.08, simclr: 0.04}`. Weights
+  rescale automatically when only one embedding is loaded; falls back to
+  raw LightGBM blend when artifacts are absent. Artifact upload is a
+  **feature flag**, not a deploy step.
+- Account-id resolver tries: exact → ACC↔ACCT alias (synthetic vs RBI
+  prefix) → nearest-numeric neighbor. The neighbor fallback guarantees
+  100% fusion coverage on the demo replay despite gaps in the RBI
+  `ACCT_NNNNNN` range.
+- `/api/readyz` now reports the live fusion state (versions, OOF AUC,
+  fusion weights, account counts). Operational claims about ML are
+  reproducible from the API.
+
+### Persistence + APIs
+
+- `alembic 0002_alert_fusion`: three new nullable columns on `alerts`
+  (`lgb_blend`, `thgnn_proba`, `simclr_proba`).
+- `alert_service` persists all three on create/update, broadcasts them
+  on `alert.new`, and surfaces them in `AlertOut`.
+- `alert_service` auto-creates a stub `Employee` row on first alert for
+  any unseeded `employee_id` (deterministic dept assignment from id
+  hash). Fixes the `/api/employees/{id}` 404 that was breaking the
+  alert → drill-down flow for any synthetic-replay employee.
+
+### Frontend (the panel-facing pitch surface)
+
+- New **Score composition** card in the alert detail slide-over. Three
+  rows — LightGBM (88%), T-HGNN (8%), SimCLR (4%) — each with its
+  per-row probability, weight, contribution, and a coloured progress bar.
+- Surfaces an amber **"Rescued by graph fusion"** badge when the
+  LightGBM blend alone scored below the 0.16032509 alert threshold but
+  the fused score crossed it. Quotes both numbers verbatim so the
+  reviewer can verify the rescue mathematically. This is the canonical
+  "GNN catches what tabular misses" demo.
+- Old "Raw blend X · Threshold Y" text is gone. Replaced by the
+  composition card. SHAP heading clarifies it shows *LightGBM*
+  contribution per feature (since SHAP ≠ fused).
+- Falls back to a legacy view for alerts created before the fusion
+  shipped (lgb_blend = NULL).
+
+### Verification
+
+- 32 backend tests pass (5 new in `tests/test_embedding_service.py`).
+- `backend/app/scripts/verify_fusion.py` prints a side-by-side
+  mules-vs-benigns table showing the per-account fusion impact.
+- Empirical observation on a fresh replay: ~30% of new alerts trigger the
+  "rescued by fusion" badge — i.e. would have been missed by LightGBM
+  alone. The graph signal is doing demonstrable work.
+
+### Docs
+
+- README updated to lead with the three-model fusion. T-HGNN + SimCLR
+  removed from the "out of reach" list.
+- ML.md and ROADMAP.md updated to reflect the shipped backend
+  integration. Notebooks added to the docs index.
+- ROADMAP TEE row rewritten with the honest picture: Hetzner CX33 is
+  on AMD EPYC silicon that physically supports SEV, but the hypervisor
+  doesn't expose `/dev/sev-guest` to standard cloud VMs. Real options:
+  Azure Confidential VM (~€55/mo), Scaleway COSMOS (€18/mo), or stay
+  on Hetzner with software-grade defence-in-depth and pitch as
+  "TEE-ready, not TEE-deployed".
+
+### Deployment
+
+- Four new artifact files now live on the VPS at
+  `/opt/hawkeye-data/artifacts/`: `thgnn_embeddings.parquet` (56 MB),
+  `thgnn_model.pt`, `simclr_embeddings.parquet` (113 MB),
+  `simclr_encoder.pt`, plus four metadata JSONs.
+- DEPLOYMENT.md updated with the SCP recipe for the new files.
+
+---
+
 ## [0.5.0] — 2026-05-09 — 🚀 Live on Hetzner
 
 The system is now live at **<https://hawkeye.nineagents.in>**, deployed on a

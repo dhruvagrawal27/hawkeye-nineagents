@@ -9,7 +9,8 @@
 | | |
 |---|---|
 | **Live URL** | https://hawkeye.nineagents.in |
-| **Deployed at** | 2026-05-09 |
+| **Deployed at** | 2026-05-09 (v0.5.0) · refreshed 2026-05-11 with v0.6.0 (T-HGNN + SimCLR fusion) |
+| **Live ML state** | `embeddings.enabled=true` — verifiable at <https://hawkeye.nineagents.in/api/readyz>. Three-model fusion: LightGBM 88% + T-HGNN 8% (AUC 0.985) + SimCLR 4% (probe AUC 0.929). 160,153 accounts indexed in each. |
 | **VPS** | Hetzner Cloud · CX33 (4 vCPU / 8 GB RAM / 80 GB SSD) · Helsinki (HEL1) |
 | **Public IP** | 204.168.183.139 |
 | **OS** | Ubuntu 24.04 LTS |
@@ -67,7 +68,7 @@ The bootstrap script installs Docker, nginx, certbot, creates `/opt/hawkeye-data
 
 ## 3. Place artifacts and synthetic data
 
-The repo gitignores `*.parquet` and `*.txt` model files. Upload them to the host:
+The repo gitignores `*.parquet`, `*.txt`, and `*.pt` model files. Upload them to the host:
 
 ```bash
 ssh root@<vps-ip> "mkdir -p /opt/hawkeye-data/{artifacts,synthetic}"
@@ -77,9 +78,42 @@ scp data/*       root@<vps-ip>:/opt/hawkeye-data/synthetic/
 
 Verify on the host:
 ```bash
-ls -la /opt/hawkeye-data/artifacts/   # 6 files: 2 .txt models, 2 .parquet, 2 .json
+ls -la /opt/hawkeye-data/artifacts/   # 14 files (see breakdown below)
 ls -la /opt/hawkeye-data/synthetic/   # 5 files including synthetic_events.jsonl
 ```
+
+**Expected `/opt/hawkeye-data/artifacts/` contents (since the v0.6.0 fusion release):**
+
+| File | Size | Required? | Source |
+|---|---|---|---|
+| `lgb_model_m1_full.txt` | 727 KB | ✅ | `ml-idea.ipynb` |
+| `lgb_model_m2_full.txt` | 78 KB | ✅ | `ml-idea.ipynb` |
+| `feature_config.json` | 5 KB | ✅ | `ml-idea.ipynb` |
+| `feature_stats.json` | 28 KB | ✅ | `ml-idea.ipynb` |
+| `account_feature_matrix.parquet` | 95 MB | ✅ | `ml-idea.ipynb` (also used by SimCLR probe fit) |
+| `oof_predictions.parquet` | 3 MB | ✅ | `ml-idea.ipynb` |
+| `thgnn_embeddings.parquet` | 56 MB | ✅ | `thgnn-train.ipynb` |
+| `thgnn_model.pt` | 361 KB | optional | `thgnn-train.ipynb` (re-load only) |
+| `thgnn_metadata.json` | <1 KB | recommended | `thgnn-train.ipynb` (drives `/api/readyz` AUC reporting) |
+| `node_id_maps.json` | 45 KB | optional | `thgnn-train.ipynb` (informational) |
+| `simclr_embeddings.parquet` | 113 MB | ✅ | `simclr-pretrain.ipynb` |
+| `simclr_encoder.pt` | 519 KB | optional | `simclr-pretrain.ipynb` (re-load only) |
+| `simclr_metadata.json` | <1 KB | recommended | `simclr-pretrain.ipynb` (drives `/api/readyz` AUC reporting) |
+| `feat_clean_scaler.json` | 6 KB | optional | `simclr-pretrain.ipynb` (informational) |
+
+If you skip the T-HGNN/SimCLR files, the backend still runs — it logs
+`embedding.thgnn_artifact_absent` / `embedding.simclr_artifact_absent`,
+flips `embeddings.enabled = false` in `/api/readyz`, and serves the
+LightGBM-only score (the v0.5 behaviour). **Artifact upload is a feature
+flag, not a deploy step** — you can ship fusion later without a code
+change.
+
+> ⚠️ **SCP race-condition gotcha:** the embedding parquets are big
+> (~170 MB combined). If the backend boots while the upload is still in
+> flight, it'll try to read a partial parquet and log
+> `pyarrow.lib.ArrowInvalid: Parquet magic bytes not found in footer`.
+> Fix: wait for `scp` to finish, then `docker compose restart backend`.
+> Verified once on the live deploy of 2026-05-11.
 
 ## 4. Clone repo and create `.env`
 
