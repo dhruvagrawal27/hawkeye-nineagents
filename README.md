@@ -9,6 +9,45 @@ Built by team **NINEAGENTS** — RBI NFPC Phase 2, Rank #4 nationally
 
 ---
 
+## 📸 Screenshots
+
+> **Note for evaluators**: Screenshot files are in [`docs/screenshots/`](docs/screenshots/). If they appear broken below, open the [live demo](https://hawkeye.nineagents.in) directly — it's faster than waiting for these to load anyway.
+
+<table>
+<tr>
+<td width="50%"><b>Branch Manager Command Center</b><br/>
+<img src="docs/screenshots/01-command-center-hero.png" alt="Command Center: KPI strip, events/sec chart, score histogram, approval queue, dept rollup, audit feed" />
+<sub>Top stat strip · events/sec chart · approval queue · department rollup · 7d×24h heatmap · live audit feed</sub>
+</td>
+<td width="50%"><b>Live event tape (Bloomberg-style)</b><br/>
+<img src="docs/screenshots/03-live-event-tape.png" alt="Live event tape mid-replay with coloured rows" />
+<sub>Every privileged-user action scored in real-time. Rows colour-flash by risk level. ⚠ alert · 📥 bulk-download · 🔓 unauthorized write</sub>
+</td>
+</tr>
+<tr>
+<td width="50%"><b>SHAP factor breakdown</b><br/>
+<img src="docs/screenshots/04-employee-detail-shap.png" alt="SHAP waterfall on Employee Detail" />
+<sub>Top 5 model factors driving this employee's score, with red/green contribution bars</sub>
+</td>
+<td width="50%"><b>LLM investigation memo</b><br/>
+<img src="docs/screenshots/05-narrative-memo.png" alt="Groq narrative memo with audit trail" />
+<sub>Groq <code>gpt-oss-120b</code> generated 4-paragraph memo + audit trail footer. Plain-English first, technical detail second.</sub>
+</td>
+</tr>
+<tr>
+<td width="50%"><b>Graph Explorer with department clustering</b><br/>
+<img src="docs/screenshots/06-graph-explorer-clusters.png" alt="D3 force-directed graph with 5 dept clusters" />
+<sub>D3 force layout. 5 departments arranged in a pentagon. Same-dept users cluster spatially.</sub>
+</td>
+<td width="50%"><b>Roles & permissions matrix</b><br/>
+<img src="docs/screenshots/08-settings-roles-matrix.png" alt="Roles capability matrix on Settings page" />
+<sub>Three roles, capability-gated UI. Click any column header to switch role.</sub>
+</td>
+</tr>
+</table>
+
+---
+
 ## 🚀 Live demo
 
 | | |
@@ -207,13 +246,33 @@ FREE-AI guidelines, ITV-2 SSO requirements, and the bank's internal model risk m
 ## Documentation index
 
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — data flow, design decisions, schemas
+- **[ML.md](ML.md)** — the model: 9-stage training pipeline, 146 features, dual-model blend, SHAP, synthetic-data signature preservation
 - **[DEMO.md](DEMO.md)** — 5-minute walkthrough script for judges
+- **[ROUND1_GAP_ANALYSIS.md](ROUND1_GAP_ANALYSIS.md)** — honest accounting of every Round 1 commitment vs what's actually built (✅ done · 🟡 partial · ❌ not done · 🚫 cut)
+- **[ROADMAP.md](ROADMAP.md)** — high-impact upgrades (TEE, self-hosted LLM, T-HGNN, SimCLR, federated learning, quantum-safe, differential privacy)
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** — production deploy recipe (Hetzner)
 - **[DEPLOYMENT_RETRO.md](DEPLOYMENT_RETRO.md)** — every gotcha we hit on the live deploy + the permanent fixes
 - **[QUICKSTART.md](QUICKSTART.md)** — local dev quickstart
 - **[CHANGELOG.md](CHANGELOG.md)** — version history
 - **[NEXT_STEPS.md](NEXT_STEPS.md)** — known gaps + roadmap
 - **[LICENSE](LICENSE)** — proprietary, all rights reserved
+
+---
+
+## 🔐 Trust & security posture (pre-empts the panel's "but Groq sees your data?" question)
+
+Live system is a demo; the production trust story is on a known path. From [ROADMAP.md](ROADMAP.md):
+
+| Concern | Today | Roadmap fix | Effort |
+|---|---|---|---|
+| LLM provider sees prompts | Groq cloud API receives prompts (employee_id, score, behaviour summary) | Self-hosted Llama-3 / `gpt-oss` via vLLM on bank's GPU. `narrative_service.py` is provider-agnostic — 30-line swap. | Low |
+| Backend operator could read memory | Standard Linux container | Trusted Execution Environment (Intel TDX / AMD SEV-SNP / Azure Confidential Computing) — memory cryptographically encrypted, not even root can read | Medium |
+| SHAP explanations leak training data | Plain SHAP values | Differential privacy on SHAP factors (ε=0.5 Laplacian noise) — bounds membership-inference attacks per DPDP Act 2023 | Low |
+| Future quantum threat to data-at-rest | AES-256 (vulnerable to harvest-now-decrypt-later) | NIST post-quantum standards (CRYSTALS-Kyber + CRYSTALS-Dilithium) — RBI FREE-AI "crypto-agility" requirement | Medium |
+| Single-bank model misses cross-bank rings | Each bank trains on its own data | Federated learning via Flower / NVIDIA FLARE — 40 PSBs train collectively without exchanging a single transaction | High |
+
+The pitch line for the panel:
+> *"In production HAWKEYE runs inside a Trusted Execution Environment with a self-hosted LLM, differential-privacy on explanations, and quantum-safe encryption — the bank's data never leaves the bank's perimeter, even from us. Federated learning roadmap connects 40+ PSBs without any of them seeing each other's data."*
 
 ---
 
