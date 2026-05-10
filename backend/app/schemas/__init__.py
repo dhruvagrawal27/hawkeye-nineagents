@@ -22,6 +22,9 @@ class AlertOut(BaseModel):
     top_signal: str | None = None
     shap_factors: list[dict[str, Any]] | None = None
     source: str
+    lgb_blend: float | None = None
+    thgnn_proba: float | None = None
+    simclr_proba: float | None = None
 
     @classmethod
     def from_orm_row(cls, alert: Any) -> AlertOut:
@@ -39,6 +42,9 @@ class AlertOut(BaseModel):
             top_signal=alert.top_signal,
             shap_factors=list(alert.shap_factors) if alert.shap_factors else None,
             source=alert.source,
+            lgb_blend=getattr(alert, "lgb_blend", None),
+            thgnn_proba=getattr(alert, "thgnn_proba", None),
+            simclr_proba=getattr(alert, "simclr_proba", None),
         )
 
 
@@ -129,3 +135,4 @@ class ReadyResponse(BaseModel):
     services: dict[str, ServiceHealth]
     threshold: float
     model_version: str
+    embeddings: dict[str, Any] | None = None

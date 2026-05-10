@@ -214,16 +214,42 @@ Sorted by impact-per-effort. Every item below has been costed against the 8 GB R
 
 ---
 
+## §1.5 — Kaggle-trained, backend-fused (the new T-HGNN + SimCLR path)
+
+Two notebooks now live in the repo that train on Kaggle's free GPU and export artifacts that drop into `artifacts/`. The backend will load them on boot and fuse them into the LightGBM blend (no GPU required at serve-time, only inference).
+
+| Item | Notebook | Train cost | Serve cost | Status |
+|---|---|---|---|---|
+| **T-HGNN (HGT over account ↔ counterparty)** | [`thgnn-train.ipynb`](thgnn-train.ipynb) | Kaggle P100/T4, ~30 min | O(1) account_id lookup → `thgnn_proba` | Notebook ✅, backend `embedding_service.py` ✅ — waiting on Kaggle export |
+| **SimCLR contrastive pre-training** | [`simclr-pretrain.ipynb`](simclr-pretrain.ipynb) | Kaggle GPU, ~12 min | Linear probe fit at startup → O(1) account_id lookup → `simclr_proba` | Notebook ✅, backend integration ✅ — waiting on Kaggle export |
+
+**Fusion strategy** — `backend/app/services/embedding_service.py` ships with default weights:
+```
+final = 0.88 * lgb_blend + 0.08 * thgnn_proba + 0.04 * simclr_proba
+```
+The service rescales weights when only one of the two embedding tables is present (e.g. T-HGNN loaded but SimCLR isn't), and falls back to the raw LightGBM blend when:
+- the artifact files aren't on disk,
+- or the queried account isn't in either embedding table.
+
+This makes the artifact upload a **feature flag**, not a deploy step. Five unit tests in `backend/tests/test_embedding_service.py` lock the contract.
+
+**Why this works on CX33** — training is what needs the GPU; inference is a `dict[str, float]` lookup. At startup the service:
+1. Reads `thgnn_embeddings.parquet` → keeps only `(account_id, thgnn_proba)` (≈1.3 MB).
+2. Reads `simclr_embeddings.parquet`, fits a sklearn `LogisticRegression` probe against the labeled subset of `account_feature_matrix.parquet`, then **discards the 128-dim matrix** and keeps only `(account_id, simclr_proba)` (≈1.3 MB).
+3. Total resident memory cost: ~3 MB extra. Easily fits in CX33's 8 GB.
+
+`/readyz` exposes the embedding state (versions, OOF AUC, fusion weights, account counts) so the live deploy log captures whether T-HGNN/SimCLR are active.
+
+---
+
 ## §2 — What we honestly CAN'T ship on the current CX33
 
 Listed for transparency. These need money or a different architecture.
 
 | Item | Why we can't ship it on CX33 | What it would take |
 |---|---|---|
-| **T-HGNN (PyTorch Geometric)** | PyTorch + PyG add ~2 GB to the backend image (currently 1.8 GB). Training on the real RBI dataset needs ~16 GB RAM minimum and ideally a GPU — neither fits CX33. | Train on Kaggle/Colab (free GPU), distill to ONNX for serve-time. Even ONNX inference adds ~500 MB to backend RAM — would need to replace LightGBM inference, not augment. **Estimated extra resource: needs CX43 (16 GB RAM, ~€16/mo) for serving.** |
-| **SimCLR contrastive pre-training** | Needs a GPU for the contrastive loss to converge in reasonable time. CX33 CPU-only training would take days for even a small embedding head. | Same as T-HGNN — train on Kaggle, serve frozen embeddings. Replaces Isolation Forest (1.13 above) with a stronger model. |
 | **Self-hosted LLM (Llama-3 / gpt-oss-120b)** | Llama-3-8B needs ~16 GB RAM minimum CPU-only with 5-10s/token (terrible for a "live" demo). 70B models or `gpt-oss-120b` need a GPU. | Cheapest viable: a Hetzner GPU instance — currently RTX 6000 Ada at ~€280/mo. Or external API (defeats the "no data leaves bank" pitch). **Stay on Groq for now; 1.2 (DP on SHAP) gives partial answer.** |
-| **Trusted Execution Environment (TEE)** | Hetzner CX33 doesn't offer Intel SGX/TDX or AMD SEV-SNP. Confidential VMs are a separate product. | Hetzner Confidential VM tier is roughly the same price (~€10/mo). **Migration: provision a new confidential VM, deploy.sh works as-is, switch DNS.** Could do this without spending more money — just changing tier. **Worth investigating whether Hetzner offers TDX.** |
+| **Trusted Execution Environment (TEE)** | Hetzner CX33 (CPX/CCX shared instances) runs on AMD EPYC silicon that physically supports AMD SEV-SNP, but Hetzner's hypervisor does not expose `/dev/sev-guest` to standard cloud VMs. There's no `cpuid` flag for SEV inside the guest, and `dmesg` shows no SEV/SME init. So even though the host CPU could attest, our VM cannot. Hetzner doesn't currently sell a "Confidential VM" SKU (unlike Azure DCasv5, GCP Confidential VMs, or Scaleway COSMOS). | **Three real options:** (a) **Azure Confidential VM** — `DC2as_v5` at ~€55/mo, AMD SEV-SNP attested, one `terraform apply` away. (b) **Scaleway COSMOS Confidential** — €18/mo, EU-hosted (Paris/Amsterdam), Intel TDX. (c) **Stay on Hetzner with software-grade defence-in-depth** — LUKS-encrypted volumes (already there) + Vault sealed-secrets (1.3) + mTLS (1.6). Pitch this as **"TEE-ready, not TEE-deployed — switching to a confidential tier is one terraform apply away when a customer asks."** Doesn't lie about what runs today. |
 | **Federated learning across banks** | Requires multi-tenant infrastructure, multiple banks consenting, a coordinator with its own infra. Not a code-only change. | Out of reach as a single-VPS system. Pitch as Phase-2 with NPCI / IBA partnership. |
 | **Quantum-safe crypto for data-at-rest** | Postgres native PQC support is still preview-stage. Hetzner's volume encryption uses AES-256. | Wait for Postgres 17 PQC GA + Hetzner adoption. Too speculative for now — keep on roadmap as the 2027 item. |
 | **Daily Hetzner backups** | Costs ~€1.60/mo extra. You explicitly declined this. | If demoed to a real bank → enable in 1 click, ~€1.60/mo |

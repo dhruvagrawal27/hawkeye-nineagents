@@ -23,6 +23,7 @@ import pandas as pd
 import shap
 
 from app.config import settings
+from app.services.embedding_service import embedding_service
 from app.services.feature_labels import format_value, label_for, normal_band
 from app.services.risk_levels import score_to_display, score_to_level
 
@@ -59,6 +60,9 @@ class ScoreResult:
     risk_level: str
     factors: list[ScoredFactor]
     threshold: float
+    lgb_blend: float = 0.0
+    thgnn_proba: float | None = None
+    simclr_proba: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -70,6 +74,9 @@ class ScoreResult:
             "risk_level": self.risk_level,
             "factors": [f.to_dict() for f in self.factors],
             "threshold": self.threshold,
+            "lgb_blend": self.lgb_blend,
+            "thgnn_proba": self.thgnn_proba,
+            "simclr_proba": self.simclr_proba,
         }
 
 
@@ -207,7 +214,12 @@ class ScoringService:
     def _build_vector(self, feature_dict: dict[str, Any], cols: list[str]) -> np.ndarray:
         return np.array([[self._impute(feature_dict, c) for c in cols]], dtype=np.float32)
 
-    def score(self, feature_dict: dict[str, Any], k_factors: int = 5) -> ScoreResult:
+    def score(
+        self,
+        feature_dict: dict[str, Any],
+        k_factors: int = 5,
+        account_id: str | None = None,
+    ) -> ScoreResult:
         if not self._loaded:
             self.load()
         assert self.m1 is not None and self.m2 is not None
@@ -215,18 +227,27 @@ class ScoringService:
         x_clean = self._build_vector(feature_dict, self.feat_clean)
         m2_prob = float(self.m2.predict(x_full)[0])
         m1_prob = float(self.m1.predict(x_clean)[0])
-        blended = self.weights["m1"] * m1_prob + self.weights["m2"] * m2_prob
+        lgb_blend = self.weights["m1"] * m1_prob + self.weights["m2"] * m2_prob
+
+        # Optional embedding fusion. When the artifact files aren't on disk
+        # (or the account has no embedding row) `fuse` returns the raw blend
+        # so the LightGBM behaviour is unchanged.
+        fused, components = embedding_service.fuse(lgb_blend, account_id)
+
         factors = self._shap_factors(x_full, k_factors)
-        risk_level = score_to_level(blended, self.threshold)
+        risk_level = score_to_level(fused, self.threshold)
         return ScoreResult(
-            score=blended,
-            display_score=score_to_display(blended, self.threshold),
+            score=fused,
+            display_score=score_to_display(fused, self.threshold),
             m1=m1_prob,
             m2=m2_prob,
-            is_alert=blended >= self.threshold,
+            is_alert=fused >= self.threshold,
             risk_level=risk_level,
             factors=factors,
             threshold=self.threshold,
+            lgb_blend=lgb_blend,
+            thgnn_proba=components.get("thgnn"),
+            simclr_proba=components.get("simclr"),
         )
 
     def _shap_factors(self, x_full: np.ndarray, k: int) -> list[ScoredFactor]:

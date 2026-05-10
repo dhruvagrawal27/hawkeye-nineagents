@@ -21,6 +21,7 @@ from app.config import settings
 from app.consumers.event_consumer import event_consumer
 from app.logging_setup import configure_logging
 from app.models.db import dispose_engine, init_engine
+from app.services.embedding_service import embedding_service
 from app.services.feature_aggregator import feature_aggregator
 from app.services.graph_service import graph_service
 from app.services.scoring import scoring_service
@@ -46,6 +47,12 @@ async def lifespan(_app: FastAPI):
     except Exception as exc:
         # Don't kill the service if matrix isn't on disk in dev — log loudly
         log.warning("hawkeye.bootstrap_assert_skipped_or_failed", error=str(exc))
+
+    # Embedding service: optional T-HGNN + SimCLR fusion. No-op if artifacts absent.
+    try:
+        embedding_service.load()
+    except Exception as exc:
+        log.warning("hawkeye.embedding_load_failed", error=str(exc))
 
     # Connect Redis (best-effort)
     try:

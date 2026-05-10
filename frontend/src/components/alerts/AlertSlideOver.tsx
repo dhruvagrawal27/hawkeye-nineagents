@@ -8,6 +8,7 @@ import { ScoreGauge } from '@/components/ui/ScoreGauge';
 import { ShapWaterfall } from '@/components/charts/ShapWaterfall';
 import { RiskBadge } from '@/components/ui/RiskBadge';
 import { Markdown } from '@/components/ui/Markdown';
+import { ScoreComposition } from '@/components/alerts/ScoreComposition';
 import { timeAgo } from '@/lib/format';
 import { toast } from '@/components/ui/Toast';
 
@@ -64,9 +65,6 @@ export function AlertSlideOver({
                 <span className="text-slate-500">Top signal · </span>
                 {alert.top_signal ?? '—'}
               </div>
-              <div className="text-xs text-slate-500 font-mono">
-                Raw blend {alert.score.toFixed(4)} · Threshold 0.1603
-              </div>
               <Link
                 to={`/employees/${alert.employee_id}`}
                 className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent2"
@@ -77,10 +75,18 @@ export function AlertSlideOver({
             </div>
           </section>
 
+          {/* Score composition: shows LightGBM vs T-HGNN vs SimCLR contributions */}
+          <section>
+            <ScoreComposition alert={alert} />
+          </section>
+
           {/* SHAP */}
           <section>
             <h3 className="text-xs uppercase tracking-widest text-slate-400 mb-3">
               SHAP factor breakdown
+              <span className="ml-2 text-2xs text-slate-500 normal-case font-mono">
+                (LightGBM contribution per feature)
+              </span>
             </h3>
             <ShapWaterfall factors={alert.shap_factors ?? []} />
           </section>

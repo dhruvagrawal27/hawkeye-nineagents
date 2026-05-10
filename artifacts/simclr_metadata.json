@@ -1,0 +1,17 @@
+{
+  "version": "HAWKEYE_SIMCLR_v1",
+  "in_dim": 105,
+  "embed_dim": 128,
+  "epochs": 100,
+  "batch_size": 512,
+  "temperature": 0.5,
+  "final_loss": 3.7265572807727714,
+  "linear_probe_auc": 0.9294021650611419,
+  "linear_probe_f1": 0.3751503006012024,
+  "fewshot_auc": {
+    "50": 0.5706358125219169,
+    "200": 0.7879773837013769,
+    "500": 0.8462480041833156
+  },
+  "training_seconds": 1405.2034177780151
+}

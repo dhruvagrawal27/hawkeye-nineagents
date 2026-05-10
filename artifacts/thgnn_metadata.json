@@ -1,0 +1,16 @@
+{
+  "version": "HAWKEYE_THGNN_v1",
+  "oof_auc": 0.984933266110021,
+  "oof_f1": 0.7424111009767618,
+  "oof_threshold": 0.9304208159446716,
+  "fold_aucs": [
+    0.984933266110021
+  ],
+  "embed_dim": 64,
+  "n_accounts": 160153,
+  "n_counterparties": 140957,
+  "n_edges": 3254788,
+  "epochs": 198,
+  "training_seconds": 12116.107737064362,
+  "device": "cpu"
+}

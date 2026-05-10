@@ -39,6 +39,11 @@ export interface Alert {
     normal: string | null;
   }> | null;
   source: string;
+  // Score composition — populated when T-HGNN / SimCLR fusion is active.
+  // null on alerts created before fusion shipped.
+  lgb_blend?: number | null;
+  thgnn_proba?: number | null;
+  simclr_proba?: number | null;
 }
 
 export interface StatsOverview {

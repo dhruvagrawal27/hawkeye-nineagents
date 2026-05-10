@@ -143,7 +143,7 @@ class EventConsumer:
         if features is None:
             return  # account not seeded — graph still updates, no alert path
 
-        result = scoring_service.score(features)
+        result = scoring_service.score(features, account_id=account_id)
         await feature_aggregator.remember_score(account_id, result.score, result.risk_level)
 
         # Stream a sampled tick to the UI for the live event ticker.

@@ -10,6 +10,7 @@ from starlette.responses import Response
 
 from app.config import settings
 from app.schemas import ReadyResponse, ServiceHealth
+from app.services.embedding_service import embedding_service
 from app.services.feature_aggregator import feature_aggregator
 from app.services.graph_service import graph_service
 from app.services.scoring import scoring_service
@@ -90,11 +91,19 @@ async def readyz() -> ReadyResponse:
         )
 
     overall = "ok" if all(s.status == "ok" for s in services.values()) else "degraded"
+    embeddings_block = {
+        "enabled": embedding_service.enabled,
+        "has_thgnn": embedding_service.has_thgnn,
+        "has_simclr": embedding_service.has_simclr,
+        "fusion_weights": embedding_service.fusion_weights if embedding_service.enabled else None,
+        "metadata": embedding_service.metadata.to_dict() if embedding_service.enabled else None,
+    }
     return ReadyResponse(
         status=overall,
         services=services,
         threshold=scoring_service.threshold,
         model_version=str(scoring_service.model_card.get("version", "v1")),
+        embeddings=embeddings_block,
     )
 
 

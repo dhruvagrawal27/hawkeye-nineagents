@@ -78,6 +78,31 @@ async def check_models_loaded(readyz: dict) -> None:
         fail("models_loaded", str(exc))
 
 
+async def check_embeddings_status(readyz: dict) -> None:
+    """Informational only — never fails. Reports whether T-HGNN / SimCLR
+    embeddings are loaded so the deploy log captures the active fusion mode.
+    """
+    try:
+        emb = readyz.get("embeddings") or {}
+        if not emb.get("enabled"):
+            ok("embeddings (disabled — LightGBM-only mode, expected when artifacts/ has no thgnn/simclr files)")
+            return
+        flags = []
+        if emb.get("has_thgnn"):
+            flags.append("thgnn")
+        if emb.get("has_simclr"):
+            flags.append("simclr")
+        meta = emb.get("metadata") or {}
+        bits = []
+        if meta.get("thgnn_oof_auc") is not None:
+            bits.append(f"thgnn_auc={meta['thgnn_oof_auc']:.3f}")
+        if meta.get("simclr_probe_auc") is not None:
+            bits.append(f"simclr_probe_auc={meta['simclr_probe_auc']:.3f}")
+        ok(f"embeddings (enabled: {'+'.join(flags) or 'none'}; {', '.join(bits) or 'no metadata'})")
+    except Exception as exc:
+        ok(f"embeddings (status check non-fatal — {exc})")
+
+
 async def check_seeded_alerts(client: httpx.AsyncClient) -> int:
     try:
         r = await client.get(f"{BASE_URL}/internal/stats", timeout=5.0)
@@ -249,6 +274,7 @@ async def run_all() -> None:
         await check_healthz(client)
         readyz = await check_readyz(client)
         await check_models_loaded(readyz)
+        await check_embeddings_status(readyz)
         await check_seeded_alerts(client)
         await check_alerts_endpoint(client)
         await check_employees_top(client)

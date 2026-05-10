@@ -6,12 +6,14 @@ The brain of HAWKEYE. This document covers the model that scores every privilege
 
 ---
 
-## Two notebooks
+## Four notebooks
 
-| File | Purpose | Lines | Output |
+| File | Purpose | Where to run | Output |
 |---|---|---|---|
-| **[ml-idea.ipynb](ml-idea.ipynb)** | The training pipeline. Loads RBI NFPC data → engineers 146 features → trains LightGBM ensemble with adversarial validation + confident learning → exports artifacts for serving. | ~700 | 8 artifacts including 2 LightGBM models + feature_config.json |
-| **[syn-data.ipynb](syn-data.ipynb)** | Synthetic banking dataset generator. Encodes the same statistical signatures the model was trained on (pass-through, structuring, off-hours, fan-out, hub-sharing, burstiness, shared IPs, KYC churn) at a 1.12% mule rate. | ~250 | `synthetic_events.jsonl` (516k events, 264 MB) — the Kafka replay source for the live demo |
+| **[ml-idea.ipynb](ml-idea.ipynb)** | The training pipeline. Loads RBI NFPC data → engineers 146 features → trains LightGBM ensemble with adversarial validation + confident learning → exports artifacts for serving. | Kaggle 4-CPU (~2 h) | 8 artifacts including 2 LightGBM models + feature_config.json — already in `artifacts/` |
+| **[syn-data.ipynb](syn-data.ipynb)** | Synthetic banking dataset generator. Encodes the same statistical signatures the model was trained on (pass-through, structuring, off-hours, fan-out, hub-sharing, burstiness, shared IPs, KYC churn) at a 1.12% mule rate. | Local or Kaggle (~3 min) | `synthetic_events.jsonl` (516k events, 264 MB) — the Kafka replay source for the live demo |
+| **[thgnn-train.ipynb](thgnn-train.ipynb)** | Heterogeneous Graph Transformer (HGT) over (account)–(counterparty) edges. Builds PyG `HeteroData`, trains 2-layer / 4-head HGT with class-balanced BCE + 5-fold CV. Heavy lifting done on Kaggle GPU; exports drop into `artifacts/` for the backend to fuse with the LightGBM blend. | Kaggle P100/T4 (~30 min) | `thgnn_model.pt` + `thgnn_embeddings.parquet` (160k × 128) + node id maps + metadata |
+| **[simclr-pretrain.ipynb](simclr-pretrain.ipynb)** | SimCLR self-supervised pre-training over the cleaned 105-feature matrix. Augmentations: feature dropout + gaussian noise. NT-Xent loss, projection head dropped at inference. Linear-probe + few-shot evaluation prove the embeddings are useful with as few as 50 labels. | Kaggle GPU (~12 min) | `simclr_encoder.pt` + `simclr_embeddings.parquet` (160k × 128) + scaler + metadata |
 
 The two notebooks split the **training** concern (real data → trained model artifacts) from the **demo data** concern (synthetic events the live system can replay without sharing real RBI data publicly). The model trained in notebook 1 scores the events generated in notebook 2 *exactly the same way it would score real bank events* — because the synthesizer preserves the statistical signatures the model relies on.
 
@@ -204,15 +206,22 @@ End-to-end latency: **~150 ms p50** from Kafka publish to WebSocket alert.new (m
 
 ## What's not in the live model (yet)
 
-The Round 1 pitch promised a **Temporal Heterogeneous Graph Neural Network (T-HGNN)** plus **SimCLR contrastive self-supervised learning**. These are honest commitments that landed on the roadmap, not the live system.
+The Round 1 pitch promised a **Temporal Heterogeneous Graph Neural Network (T-HGNN)** plus **SimCLR contrastive self-supervised learning**. The live LightGBM blend (AUC 0.998) was always the workhorse; the GNN + SSL story stayed on the roadmap because the CX33 has no GPU.
 
-The live system uses:
-- ✅ A LightGBM ensemble (delivered, the source of the 0.998 AUC number)
-- ✅ Graph features (delivered, but as graph aggregates fed into LightGBM, not a true GNN forward pass)
-- ❌ T-HGNN — not delivered. A PyTorch Geometric implementation is on the roadmap. See [ROADMAP.md](ROADMAP.md).
-- ❌ SimCLR contrastive embeddings — not delivered. Same; on the roadmap.
+**Updated status (2026-05-10)**: both notebooks are written and runnable on Kaggle (free P100/T4), and the **backend fusion path is shipped** — waiting only for Kaggle exports to drop into `artifacts/`:
 
-The reason for this gap is honest: the V8 LightGBM pipeline already achieves AUC 0.998 on the real data. A T-HGNN would likely match it but at 10× the training cost and complexity. The pitch keeps the option open; the live system delivers the proven model. The full Round-1-vs-built accounting is in [ROUND1_GAP_ANALYSIS.md](ROUND1_GAP_ANALYSIS.md).
+- ✅ **T-HGNN** — `thgnn-train.ipynb` ready. Trains HGT on (account)–(counterparty) bipartite graph with edge attributes (₹ flow, credit rate, off-hours rate). Kaggle GPU does the heavy lifting; exports a 5 MB state dict + 128-dim node embeddings + per-account `thgnn_proba` as parquet.
+- ✅ **SimCLR** — `simclr-pretrain.ipynb` ready. Self-supervised contrastive pre-training over the 105 clean features with feature-dropout + gaussian-noise augmentations. NT-Xent loss, projection head dropped at inference. Linear-probe + few-shot evaluation included so the cold-start pitch ("useful detection at 50 labels") is measurable, not handwaved.
+- ✅ **Backend** — `backend/app/services/embedding_service.py` loads both artifacts on boot, fits a SimCLR linear probe against the labeled account matrix at startup, and exposes a `fuse(lgb_blend, account_id) -> (final, components)` API. The scoring service calls `fuse()` after computing the LightGBM blend; when artifacts are absent the call is a no-op and the LightGBM-only behaviour is preserved exactly. Five unit tests guard the contract.
+- ✅ LightGBM blend stays in production as the primary scorer; T-HGNN and SimCLR add features, they don't replace.
+
+Default fusion weights (set in code; re-tunable per deployment):
+```
+final = 0.88 * lgb_blend + 0.08 * thgnn_proba + 0.04 * simclr_proba
+```
+Weights rescale automatically when only one of the two embedding tables is loaded, and fall back to the raw LightGBM blend on a per-account lookup miss. So artifact upload is a feature flag, not a deploy step. `/readyz` reports the live fusion state (versions, OOF AUC, account counts) for operational visibility.
+
+Round-1-vs-built accounting still lives in [ROUND1_GAP_ANALYSIS.md](ROUND1_GAP_ANALYSIS.md); the gap is now narrower.
 
 ---
 
@@ -232,3 +241,15 @@ Synthetic data:
 3. Copy `synthetic_events.jsonl` (and the others) to `data/` in your local repo OR `/opt/hawkeye-data/synthetic/` on the VPS.
 
 Both are documented in [DEPLOYMENT.md](DEPLOYMENT.md) under "upload artifacts".
+
+T-HGNN embeddings:
+1. Open `thgnn-train.ipynb` in Kaggle, attach the RBI NFPC Phase 2 dataset, enable GPU (P100 or T4).
+2. Run all cells (~30 min). Outputs land in `/kaggle/working/hawkeye_thgnn/`.
+3. Download the four files and drop them into `artifacts/` (gitignored).
+4. Restart the backend — `embedding_service` (forthcoming, see ROADMAP §1.x) will detect the new files and start fusing T-HGNN proba into the blend.
+
+SimCLR embeddings:
+1. Open `simclr-pretrain.ipynb` in Kaggle. Requires both the RBI dataset AND a copy of `account_feature_matrix.parquet` from `ml-idea.ipynb` (upload as a Kaggle dataset, or run `ml-idea.ipynb` first in the same Kaggle session).
+2. Enable GPU. Run all cells (~12 min).
+3. Download `/kaggle/working/hawkeye_simclr/` into `artifacts/`.
+4. Same backend hot-reload semantics as T-HGNN.

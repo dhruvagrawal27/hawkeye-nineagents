@@ -31,6 +31,12 @@ class Alert(Base):
     top_signal: Mapped[str | None] = mapped_column(String(128), nullable=True)
     source: Mapped[str] = mapped_column(String(16), default="seed")  # seed | replay | manual
 
+    # Score composition — populated when T-HGNN / SimCLR fusion is active.
+    # NULL on alerts created before the fusion feature shipped.
+    lgb_blend: Mapped[float | None] = mapped_column(Float, nullable=True)
+    thgnn_proba: Mapped[float | None] = mapped_column(Float, nullable=True)
+    simclr_proba: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     __table_args__ = (
         Index("ix_alerts_status_triggered", "status", "triggered_at"),
         Index("ix_alerts_employee_status", "employee_id", "status"),

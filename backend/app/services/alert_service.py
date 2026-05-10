@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.alert import Alert
+from app.models.employee import Employee
 from app.services.scoring import ScoreResult
 from app.ws.manager import ws_manager
 
@@ -31,6 +32,45 @@ def _employee_id_from_account(account_id: str) -> str:
     if account_id.startswith("ACCT_"):
         return "EMP_" + account_id[5:]
     return f"EMP_{account_id}"
+
+
+_DEPT_POOL = (
+    "Operations",
+    "Risk",
+    "Compliance",
+    "Treasury",
+    "Retail",
+    "Branch Banking",
+    "Trade Finance",
+    "Audit",
+)
+
+
+async def _ensure_employee(db: AsyncSession, employee_id: str, account_id: str) -> None:
+    """Auto-create a stub employee row if the live event references an
+    employee that wasn't in the seed. Without this the /employees/{id}
+    detail page 404s for any synthetic-replay employee, breaking the
+    alert -> drill-down flow during demos.
+
+    Department is derived deterministically from the employee_id so the
+    same id always lands in the same department (stable across reruns).
+    """
+    existing = await db.get(Employee, employee_id)
+    if existing is not None:
+        return
+    # Stable hash: sum of digits in the id mod len(pool)
+    digits = "".join(c for c in employee_id if c.isdigit()) or "0"
+    bucket = sum(int(c) for c in digits) % len(_DEPT_POOL)
+    db.add(
+        Employee(
+            id=employee_id,
+            account_id=account_id,
+            display_name=employee_id.replace("EMP_", "Employee "),
+            department=_DEPT_POOL[bucket],
+            is_mule_seed=0,
+        )
+    )
+    # Caller's commit will flush this insert.
 
 
 async def find_existing_open_alert(
@@ -62,6 +102,7 @@ async def create_or_update_alert(
     has score within ALERT_DEDUP_DELTA, we update its last_seen_at and (if
     higher) its score, return is_new=False. Otherwise create new alert."""
     employee_id = _employee_id_from_account(account_id)
+    await _ensure_employee(db, employee_id, account_id)
     existing = await find_existing_open_alert(db, employee_id, settings.ALERT_DEDUP_WINDOW_MINUTES)
 
     factors_payload = [f.to_dict() for f in score_result.factors]
@@ -75,6 +116,9 @@ async def create_or_update_alert(
             existing.risk_level = score_result.risk_level
             existing.shap_factors = factors_payload  # type: ignore[assignment]
             existing.top_signal = top_signal
+            existing.lgb_blend = score_result.lgb_blend
+            existing.thgnn_proba = score_result.thgnn_proba
+            existing.simclr_proba = score_result.simclr_proba
         await db.commit()
         log.info(
             "alert.deduped",
@@ -115,6 +159,9 @@ async def create_or_update_alert(
         shap_factors=factors_payload,
         top_signal=top_signal,
         source=source,
+        lgb_blend=score_result.lgb_blend,
+        thgnn_proba=score_result.thgnn_proba,
+        simclr_proba=score_result.simclr_proba,
     )
     db.add(alert)
     await db.commit()
@@ -151,6 +198,9 @@ async def broadcast_alert(alert: Alert) -> None:
             "shap_factors": json.loads(json.dumps(alert.shap_factors, default=str))
             if alert.shap_factors
             else None,
+            "lgb_blend": alert.lgb_blend,
+            "thgnn_proba": alert.thgnn_proba,
+            "simclr_proba": alert.simclr_proba,
         },
     }
     await ws_manager.broadcast(payload)
