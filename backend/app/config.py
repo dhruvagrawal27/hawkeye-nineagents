@@ -20,10 +20,22 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     PREFLIGHT_MODE: int = 0
 
-    # LLM (Groq only)
+    # LLM provider toggle: groq | nearai. Both serve openai/gpt-oss-120b.
+    # 'nearai' routes investigation memos through NEAR AI Cloud's TEE-attested
+    # OpenAI-compatible endpoint (Intel TDX + NVIDIA H200 confidential compute,
+    # per-request cryptographic attestation). 'groq' is the original Groq path.
+    LLM_PROVIDER: str = "groq"
+
+    # Groq
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "openai/gpt-oss-120b"
     GROQ_TIMEOUT_SECONDS: int = 30
+
+    # NEAR AI Cloud (TEE-attested confidential AI)
+    NEAR_AI_API_KEY: str = ""
+    NEAR_AI_BASE_URL: str = "https://cloud-api.near.ai/v1"
+    NEAR_AI_MODEL: str = "openai/gpt-oss-120b"
+    NEAR_AI_TIMEOUT_SECONDS: int = 30
 
     # Postgres
     POSTGRES_URL: str = "postgresql+asyncpg://hawkeye:hawkeye_dev_change_me@postgres:5432/hawkeye"

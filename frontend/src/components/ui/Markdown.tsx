@@ -3,7 +3,7 @@ import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/format';
 
 /**
- * Themed markdown renderer used for the Groq investigation memos.
+ * Themed markdown renderer used for LLM-generated investigation memos.
  * Section headings (## Risk Summary, ## What We Observed, ## Why It
  * Matters, ## Recommended Next Step) get a uniform terminal-style
  * eyebrow treatment; the audit-trail footer (after `---`) renders with

@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { ShapWaterfall } from '@/components/charts/ShapWaterfall';
 import { ScoreTimeline } from '@/components/charts/ScoreTimeline';
 import { Markdown } from '@/components/ui/Markdown';
+import { TEEAttestationBadge } from '@/components/alerts/TEEAttestationBadge';
 import { cn, timeAgo } from '@/lib/format';
 import { toast } from '@/components/ui/Toast';
 
@@ -196,10 +197,11 @@ function NarrativeTab({ alertId }: { alertId: number }) {
       ) : narrative.data ? (
         <div>
           <Markdown source={narrative.data.body} />
+          <TEEAttestationBadge narrative={narrative.data} />
           <div className="mt-4 pt-3 border-t border-slate-800 flex gap-3 text-xs text-slate-500 font-mono">
             <span>model: {narrative.data.model_version}</span>
             {narrative.data.latency_ms && <span>latency: {narrative.data.latency_ms}ms</span>}
-            {narrative.data.is_fallback && <span className="text-amber-400">⚠ fallback</span>}
+            {narrative.data.is_fallback && <span className="text-amber-400">⚠ local-template fallback</span>}
           </div>
         </div>
       ) : (

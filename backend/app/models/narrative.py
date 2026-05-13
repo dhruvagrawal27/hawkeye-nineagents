@@ -24,3 +24,6 @@ class Narrative(Base):
     generated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
     )
+    # Provenance — populated when LLM_PROVIDER is set. NULL on legacy rows.
+    provider: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    tee_attested: Mapped[bool | None] = mapped_column(Boolean, nullable=True)

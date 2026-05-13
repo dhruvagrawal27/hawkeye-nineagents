@@ -129,7 +129,7 @@ function RolesMatrix() {
     { key: 'canInvestigate',            label: 'Open investigations (assign-to-self)' },
     { key: 'canEscalate',               label: 'Escalate to supervisor' },
     { key: 'canApproveEscalations',     label: 'Approve / reject escalations' },
-    { key: 'canRegenerateNarrative',    label: 'Regenerate Groq narratives' },
+    { key: 'canRegenerateNarrative',    label: 'Regenerate investigation memos' },
     { key: 'canBulkAction',             label: 'Bulk triage (multiple alerts)' },
     { key: 'canViewAuditLog',           label: 'View audit log' },
     { key: 'canViewDepartmentRollup',   label: 'Department rollup + Command Center' },

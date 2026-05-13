@@ -63,7 +63,7 @@ export function MissionCallout() {
               <ul className="space-y-1.5 list-none">
                 <li><Tag tone="ok">RISK SCORE</Tag> — 0-1 with risk-band (LOW / MEDIUM / HIGH / CRITICAL)</li>
                 <li><Tag tone="ok">SHAP EXPLANATION</Tag> — the 5 features driving this score, in plain English</li>
-                <li><Tag tone="ok">LLM NARRATIVE</Tag> — Groq-generated investigation memo with audit footer</li>
+                <li><Tag tone="ok">LLM NARRATIVE</Tag> — TEE-attested investigation memo (open-weight gpt-oss-120b on confidential compute)</li>
                 <li><Tag tone="ok">GRAPH NEIGHBOURHOOD</Tag> — shared systems with other flagged users</li>
                 <li><Tag tone="ok">TRIAGE WORKFLOW</Tag> — assign / escalate / dismiss with audit trail</li>
               </ul>

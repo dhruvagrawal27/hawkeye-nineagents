@@ -100,6 +100,8 @@ class NarrativeOut(BaseModel):
     is_fallback: bool
     latency_ms: int | None = None
     generated_at: datetime
+    provider: str | None = None
+    tee_attested: bool | None = None
 
 
 class StatsOverview(BaseModel):
@@ -136,3 +138,4 @@ class ReadyResponse(BaseModel):
     threshold: float
     model_version: str
     embeddings: dict[str, Any] | None = None
+    llm: dict[str, Any] | None = None

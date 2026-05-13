@@ -40,6 +40,8 @@ async def get_narrative(
         is_fallback=n.is_fallback,
         latency_ms=n.latency_ms,
         generated_at=n.generated_at,
+        provider=n.provider,
+        tee_attested=n.tee_attested,
     )
 
 
@@ -90,6 +92,8 @@ async def regenerate(
         model_version=result.model_version,
         is_fallback=result.is_fallback,
         latency_ms=result.latency_ms,
+        provider=result.provider,
+        tee_attested=result.tee_attested,
     )
     db.add(n)
     await db.commit()
@@ -111,4 +115,6 @@ async def regenerate(
         is_fallback=n.is_fallback,
         latency_ms=n.latency_ms,
         generated_at=n.generated_at,
+        provider=n.provider,
+        tee_attested=n.tee_attested,
     )

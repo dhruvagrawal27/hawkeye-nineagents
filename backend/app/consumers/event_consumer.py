@@ -316,6 +316,8 @@ class EventConsumer:
                         model_version=result.model_version,
                         is_fallback=result.is_fallback,
                         latency_ms=result.latency_ms,
+                        provider=result.provider,
+                        tee_attested=result.tee_attested,
                     )
                 )
                 await db.commit()

@@ -9,6 +9,7 @@ import { ShapWaterfall } from '@/components/charts/ShapWaterfall';
 import { RiskBadge } from '@/components/ui/RiskBadge';
 import { Markdown } from '@/components/ui/Markdown';
 import { ScoreComposition } from '@/components/alerts/ScoreComposition';
+import { TEEAttestationBadge } from '@/components/alerts/TEEAttestationBadge';
 import { timeAgo } from '@/lib/format';
 import { toast } from '@/components/ui/Toast';
 
@@ -102,7 +103,10 @@ export function AlertSlideOver({
             {narrative.isLoading ? (
               <div className="text-xs text-slate-500 italic">Generating…</div>
             ) : narrative.data?.body ? (
-              <Markdown source={narrative.data.body} />
+              <>
+                <Markdown source={narrative.data.body} />
+                <TEEAttestationBadge narrative={narrative.data} />
+              </>
             ) : (
               <div className="text-xs text-slate-500">
                 Narrative will be generated on first view.

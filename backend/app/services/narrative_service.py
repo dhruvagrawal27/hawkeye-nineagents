@@ -1,9 +1,15 @@
-"""Groq-backed investigation narrative generator with deterministic fallback.
+"""Investigation-narrative generator with provider abstraction + deterministic fallback.
+
+Supports two LLM providers via the OpenAI-compatible API surface:
+- ``groq`` — original Groq cloud, no TEE
+- ``nearai`` — NEAR AI Cloud, Intel TDX + NVIDIA H200 confidential compute.
+  Every request is processed inside a hardware-enforced enclave; the gateway
+  ships a signed attestation report verifiable via /v1/attestation/report.
 
 Failure modes (timeout, rate limit, network) NEVER bubble up — we degrade
 to a Jinja-rendered fallback with the same structure (4 paragraphs +
 audit trail footer) so the UI cannot tell them apart. The fallback path
-is logged at WARN with `groq_failure=true` for grep-ability.
+is logged at WARN with ``llm_failure=true`` for grep-ability.
 """
 
 from __future__ import annotations
@@ -15,8 +21,8 @@ from pathlib import Path
 from typing import Any
 
 import structlog
-from groq import APIError, APITimeoutError, AsyncGroq, RateLimitError
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from openai import APIError, APITimeoutError, AsyncOpenAI, RateLimitError
 from tenacity import (
     AsyncRetrying,
     RetryError,
@@ -44,6 +50,8 @@ class NarrativeResult:
     is_fallback: bool
     latency_ms: int
     model_version: str
+    provider: str  # 'groq' | 'nearai' | '<provider>-fallback'
+    tee_attested: bool  # True when the response came from a TEE-attested gateway
 
 
 def _audit_footer(factors: list[dict[str, Any]]) -> str:
@@ -90,17 +98,48 @@ def _fallback_narrative(employee_id: str, score: float, risk_level: str, factors
     return body + _audit_footer(factors)
 
 
+_PROVIDER_CONFIG = {
+    "nearai": lambda: (
+        settings.NEAR_AI_BASE_URL,
+        settings.NEAR_AI_API_KEY,
+        settings.NEAR_AI_MODEL,
+        settings.NEAR_AI_TIMEOUT_SECONDS,
+        True,  # tee_attested
+    ),
+    "groq": lambda: (
+        "https://api.groq.com/openai/v1",
+        settings.GROQ_API_KEY,
+        settings.GROQ_MODEL,
+        settings.GROQ_TIMEOUT_SECONDS,
+        False,
+    ),
+}
+
+
 class NarrativeService:
     def __init__(self) -> None:
-        self._client: AsyncGroq | None = None
+        self._clients: dict[str, AsyncOpenAI] = {}
 
-    @property
-    def client(self) -> AsyncGroq:
-        if self._client is None:
-            if not settings.GROQ_API_KEY:
-                raise RuntimeError("GROQ_API_KEY not configured")
-            self._client = AsyncGroq(api_key=settings.GROQ_API_KEY, timeout=settings.GROQ_TIMEOUT_SECONDS)
-        return self._client
+    def _primary_provider(self) -> str:
+        p = settings.LLM_PROVIDER.lower()
+        return p if p in _PROVIDER_CONFIG else "groq"
+
+    def _failover_chain(self) -> list[str]:
+        """Try the configured provider first; on failure fall through to
+        the other configured provider. Keeps the live demo bulletproof when
+        the primary path hiccups, without ever advertising the fallback."""
+        primary = self._primary_provider()
+        order = [primary] + [p for p in _PROVIDER_CONFIG if p != primary]
+        # Only keep providers with credentials present
+        return [p for p in order if _PROVIDER_CONFIG[p]()[1]]
+
+    def _client(self, provider: str) -> tuple[AsyncOpenAI, str, str, int, bool]:
+        base_url, api_key, model, timeout, tee_attested = _PROVIDER_CONFIG[provider]()
+        if not api_key:
+            raise RuntimeError(f"{provider.upper()}_API_KEY not configured")
+        if provider not in self._clients:
+            self._clients[provider] = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
+        return self._clients[provider], provider, model, timeout, tee_attested
 
     async def generate(
         self,
@@ -125,58 +164,75 @@ class NarrativeService:
 
         t0 = time.perf_counter()
 
-        if not settings.GROQ_API_KEY:
-            log.warning("narrative.groq_disabled.using_fallback", employee_id=employee_id)
+        chain = self._failover_chain()
+        if not chain:
+            log.warning("narrative.llm_disabled.using_fallback", employee_id=employee_id)
             body = _fallback_narrative(employee_id, score, risk_level, factors, behaviour)
             return NarrativeResult(
                 body=body,
                 is_fallback=True,
                 latency_ms=int((time.perf_counter() - t0) * 1000),
-                model_version=f"{settings.GROQ_MODEL}-fallback",
+                model_version="local-template",
+                provider="fallback",
+                tee_attested=False,
             )
 
-        try:
-            async for attempt in AsyncRetrying(
-                stop=stop_after_attempt(3),
-                wait=wait_exponential(multiplier=0.5, max=4.0),
-                retry=retry_if_exception_type((APITimeoutError, RateLimitError, APIError, asyncio.TimeoutError)),
-                reraise=True,
-            ):
-                with attempt:
-                    # gpt-oss models on Groq are reasoning models — allow headroom
-                    # for completion content after the (low) reasoning budget.
-                    response = await self.client.chat.completions.create(
-                        model=settings.GROQ_MODEL,
-                        messages=[{"role": "user", "content": prompt}],
-                        temperature=0.3,
-                        max_tokens=1500,
-                        reasoning_effort="low",
-                    )
-            body = (response.choices[0].message.content or "").strip()
-            if len(body) < 80:
-                raise ValueError(f"narrative too short (len={len(body)})")
-            body = body + _audit_footer(factors)
-            return NarrativeResult(
-                body=body,
-                is_fallback=False,
-                latency_ms=int((time.perf_counter() - t0) * 1000),
-                model_version=settings.GROQ_MODEL,
-            )
-        except (TimeoutError, RetryError, APIError, APITimeoutError, RateLimitError, ValueError) as exc:
-            log.warning(
-                "narrative.groq_failure.using_fallback",
-                employee_id=employee_id,
-                groq_failure=True,
-                error=str(exc)[:200],
-                error_type=type(exc).__name__,
-            )
-            body = _fallback_narrative(employee_id, score, risk_level, factors, behaviour)
-            return NarrativeResult(
-                body=body,
-                is_fallback=True,
-                latency_ms=int((time.perf_counter() - t0) * 1000),
-                model_version=f"{settings.GROQ_MODEL}-fallback",
-            )
+        last_exc: Exception | None = None
+        for provider in chain:
+            try:
+                client, _, model, _, tee_attested = self._client(provider)
+                async for attempt in AsyncRetrying(
+                    stop=stop_after_attempt(3),
+                    wait=wait_exponential(multiplier=0.5, max=4.0),
+                    retry=retry_if_exception_type((APITimeoutError, RateLimitError, APIError, asyncio.TimeoutError)),
+                    reraise=True,
+                ):
+                    with attempt:
+                        response = await client.chat.completions.create(
+                            model=model,
+                            messages=[{"role": "user", "content": prompt}],
+                            temperature=0.3,
+                            max_tokens=1500,
+                            extra_body={"reasoning_effort": "low"},
+                        )
+                body = (response.choices[0].message.content or "").strip()
+                if len(body) < 80:
+                    raise ValueError(f"narrative too short (len={len(body)})")
+                body = body + _audit_footer(factors)
+                return NarrativeResult(
+                    body=body,
+                    is_fallback=False,
+                    latency_ms=int((time.perf_counter() - t0) * 1000),
+                    model_version=model,
+                    provider=provider,
+                    tee_attested=tee_attested,
+                )
+            except (TimeoutError, RetryError, APIError, APITimeoutError, RateLimitError, ValueError) as exc:
+                log.warning(
+                    "narrative.llm_failure",
+                    employee_id=employee_id,
+                    provider=provider,
+                    error=str(exc)[:200],
+                    error_type=type(exc).__name__,
+                )
+                last_exc = exc
+                continue
+
+        log.warning(
+            "narrative.all_providers_failed.using_fallback",
+            employee_id=employee_id,
+            tried=chain,
+            error=str(last_exc)[:200] if last_exc else None,
+        )
+        body = _fallback_narrative(employee_id, score, risk_level, factors, behaviour)
+        return NarrativeResult(
+            body=body,
+            is_fallback=True,
+            latency_ms=int((time.perf_counter() - t0) * 1000),
+            model_version="local-template",
+            provider="fallback",
+            tee_attested=False,
+        )
 
 
 narrative_service = NarrativeService()

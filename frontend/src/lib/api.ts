@@ -46,6 +46,32 @@ export interface Alert {
   simclr_proba?: number | null;
 }
 
+export interface NarrativeResponse {
+  alert_id: number;
+  body: string;
+  model_version: string;
+  is_fallback: boolean;
+  latency_ms: number | null;
+  generated_at: string;
+  provider?: string | null;       // 'nearai' | 'groq' | null (legacy)
+  tee_attested?: boolean | null;  // true when generated inside a TEE
+}
+
+export interface AttestationSnapshot {
+  tee_attested: boolean;
+  provider: string;
+  gateway: string | null;
+  model: string | null;
+  signing_address: string | null;
+  signing_algo: string | null;
+  intel_quote_sha256: string | null;
+  intel_quote_prefix: string | null;
+  intel_quote_bytes: number;
+  fetched_at: string | null;
+  fetch_ok: boolean;
+  error: string | null;
+}
+
 export interface StatsOverview {
   total_alerts_24h: number;
   high_risk_employees: number;

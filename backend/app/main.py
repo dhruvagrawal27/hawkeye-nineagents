@@ -21,6 +21,7 @@ from app.config import settings
 from app.consumers.event_consumer import event_consumer
 from app.logging_setup import configure_logging
 from app.models.db import dispose_engine, init_engine
+from app.services.attestation_service import attestation_service
 from app.services.embedding_service import embedding_service
 from app.services.feature_aggregator import feature_aggregator
 from app.services.graph_service import graph_service
@@ -53,6 +54,13 @@ async def lifespan(_app: FastAPI):
         embedding_service.load()
     except Exception as exc:
         log.warning("hawkeye.embedding_load_failed", error=str(exc))
+
+    # TEE attestation cache: fetch one report from the NEAR AI Cloud gateway
+    # if LLM_PROVIDER=nearai. No-op (and harmless) for groq.
+    try:
+        await attestation_service.refresh()
+    except Exception as exc:
+        log.warning("hawkeye.attestation_refresh_failed", error=str(exc))
 
     # Connect Redis (best-effort)
     try:
