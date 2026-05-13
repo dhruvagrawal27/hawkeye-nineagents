@@ -216,11 +216,13 @@ Kafka event (1 row) ──► consumer
                           │
                           └─► if blend ≥ 0.16032509:
                               ├── alert_service.create_or_update (60-min dedup window)
-                              ├── narrative_service.generate (Groq gpt-oss-120b, reasoning_effort=low)
+                              ├── narrative_service.generate
+                              │     (openai/gpt-oss-120b inside Intel TDX + NVIDIA H200 TEE,
+                              │      NEAR AI Cloud, per-request TDX attestation)
                               └── WebSocket broadcast alert.new
 ```
 
-End-to-end latency: **~150 ms p50** from Kafka publish to WebSocket alert.new (measured on the deployed Hetzner CX33). Of that, ~80 ms is SHAP, ~30 ms is the LightGBM blend, ~25 ms is Groq. The narrative generation is asyncio.create_task'd so it doesn't block the alert broadcast.
+End-to-end latency to `alert.new` broadcast: **~150 ms p50** on the deployed Hetzner CX33 (~80 ms SHAP, ~30 ms LightGBM blend, ~30 ms graph/embedding lookups). Narrative generation runs in `asyncio.create_task` and does not block the broadcast — typical TEE call latency is ~8 s warm / ~20 s cold via the confidential gateway, but the user sees the alert immediately and the memo lands shortly after.
 
 ---
 

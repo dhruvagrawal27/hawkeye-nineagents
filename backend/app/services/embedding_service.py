@@ -176,7 +176,7 @@ class EmbeddingService:
 
     def _load_thgnn(self, path: Path) -> None:
         df = pd.read_parquet(path, columns=["account_id", "thgnn_proba"])
-        self.thgnn_proba = dict(zip(df["account_id"].astype(str), df["thgnn_proba"].astype(float)))
+        self.thgnn_proba = dict(zip(df["account_id"].astype(str), df["thgnn_proba"].astype(float), strict=True))
         self.metadata.n_accounts_thgnn = len(self.thgnn_proba)
 
         meta_path = self.artifacts_dir / self.THGNN_META
@@ -211,7 +211,7 @@ class EmbeddingService:
             try:
                 lab = pd.read_parquet(matrix_path, columns=["account_id", "is_mule"])
                 lab["account_id"] = lab["account_id"].astype(str)
-                aid_to_label = dict(zip(lab["account_id"], lab["is_mule"]))
+                aid_to_label = dict(zip(lab["account_id"], lab["is_mule"], strict=True))
                 y = np.array([aid_to_label.get(a, np.nan) for a in account_ids])
                 mask = ~np.isnan(y)
                 if mask.sum() >= 100 and y[mask].sum() >= 5:
@@ -244,7 +244,7 @@ class EmbeddingService:
             proba = 1.0 / (1.0 + np.exp(-score))
             log.info("embedding.simclr_using_cosine_fallback")
 
-        self.simclr_proba = dict(zip(account_ids, proba.astype(float)))
+        self.simclr_proba = dict(zip(account_ids, proba.astype(float), strict=True))
         self.metadata.n_accounts_simclr = len(self.simclr_proba)
 
         meta_path = self.artifacts_dir / self.SIMCLR_META

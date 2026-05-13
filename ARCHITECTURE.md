@@ -23,11 +23,19 @@ synthetic_events.jsonl
                   └──────┬───────┘         └──────┬──────┘
                          │                        │
                   ┌──────▼────────────────────────▼──────┐
-                  │  Scoring service (M1+M2 blend, SHAP) │
+                  │  Scoring service                     │
+                  │    LightGBM M1+M2 blend (88%)        │
+                  │  + T-HGNN graph proba    (8%)        │
+                  │  + SimCLR cold-start     (4%)        │
+                  │  + SHAP top-5 explanation             │
                   └──────────────┬───────────────────────┘
                                  │ score >= threshold
                   ┌──────────────▼───────────────────────┐
-                  │  Narrative service (Groq + fallback)  │
+                  │  Narrative service                    │
+                  │    openai/gpt-oss-120b inside         │
+                  │    Intel TDX + NVIDIA H200 TEE        │
+                  │    (NEAR AI Cloud, per-req attest)    │
+                  │    + silent failover + Jinja          │
                   └──────────────┬───────────────────────┘
                                  │
                   ┌──────────────▼───────────────────────┐
@@ -75,7 +83,7 @@ The spec told us to compare loaded-model output against `oof_predictions.parquet
 |---|---|
 | **Boot** | `seed.py` inserts 50 alerts from the top-50 mules in `account_feature_matrix.parquet` if the alerts table has <10 rows. Every boot, no exceptions. |
 | **Replay** | The default replay mode (`mule_burst`) injects events from the top-10 mule accounts *first*, before the general stream, guaranteeing alerts within 30–60s. |
-| **Preflight** | `preflight_check.py` directly creates a test alert + generates a Groq narrative + reads it back. If any link in the chain fails, the deploy fails. |
+| **Preflight** | `preflight_check.py` directly creates a test alert + generates a TEE-attested narrative + reads it back. If any link in the chain fails, the deploy fails. |
 
 ### 5. Alert deduplication
 
@@ -94,9 +102,15 @@ The model knows `account_id`, `counterparty_id`, `ip_address`. The dashboard spe
 
 The internal services NEVER see the remapped values. This keeps the model contract clean and lets us re-skin the demo for other contexts.
 
-### 7. Groq fallback is mandatory
+### 7. LLM failure must never surface to the UI
 
-Network failures, rate limits, and timeouts to Groq must never surface to the UI. `narrative_service.generate_narrative` wraps the Groq call with `tenacity` (3 retries, exponential backoff). On final failure it returns a Jinja-rendered fallback memo using the SHAP factors. The fallback is structurally identical (same headers, same audit footer) so the UI cannot tell the difference. Failure is logged at WARN with `groq_failure=true` so we can grep alerts for fallback usage.
+The investigation memo is generated through a provider chain:
+
+1. **Primary** (when `LLM_PROVIDER=nearai`): `openai/gpt-oss-120b` on NEAR AI Cloud's Intel TDX + NVIDIA H200 GPU confidential compute gateway. Per-request TDX attestation cached by `attestation_service`.
+2. **Silent failover**: if the primary call fails (timeout, rate limit, network), `narrative_service` transparently retries against any other configured provider (e.g. a Groq key set in `.env`). Failover is logged at WARN but invisible in the UI.
+3. **Final fallback**: if all providers fail, a Jinja-rendered template renders the same 4-paragraph + audit-footer structure using the SHAP factors. Structurally identical so the UI cannot tell the difference.
+
+Every saved narrative records `provider` and `tee_attested` columns so auditors can verify per-alert which path produced it. `tenacity` wraps each provider call with 3 retries + exponential backoff. Failure is grepped via `llm_failure=true` in structlog.
 
 ### 8. Models loaded once at startup
 
@@ -151,5 +165,5 @@ ON MATCH SET r.count = r.count + 1, r.last_at = $ts
 
 - All admin ports (5432 Postgres, 7474/7687 Neo4j, 9090 Prometheus, 3000 Grafana, 9001 MinIO console, 8081 Keycloak admin) bind to `127.0.0.1` in `docker-compose.prod.yml`. Only ports `80` and `443` are publicly reachable, served by host nginx with TLS.
 - JWT verification on every API request except `/healthz`, `/readyz`, `/metrics`, and (when `PREFLIGHT_MODE=1`) `/internal/*`.
-- Groq API key, Postgres password, Keycloak admin password, MinIO secret all loaded from `/opt/hawkeye/.env` (`chmod 600`, owner-only). Never logged. Structlog redacts any field matching `*_key`, `*_secret`, `*_password`.
+- NEAR AI API key, Groq API key (fallback), Postgres password, Keycloak admin password, MinIO secret all loaded from `/opt/hawkeye/.env` (`chmod 600`, owner-only). Never logged. Structlog redacts any field matching `*_key`, `*_secret`, `*_password`.
 - CSP and security headers (X-Frame-Options DENY, X-Content-Type-Options nosniff, HSTS) set by host nginx.

@@ -48,7 +48,7 @@ Built by team **NINEAGENTS** — RBI NFPC Phase 2, Rank #4 nationally
 When you open the URL:
 
 1. **Top status bar** is live: IST clock ticking, 5 service health dots
-   (Postgres, Redis, Neo4j, Kafka, Groq), KPI counters (open alerts, 24h
+   (Postgres, Redis, Neo4j, Kafka, **confidential-AI LLM**), KPI counters (open alerts, 24h
    alerts, high-risk users, total events, EPS), WebSocket connectivity dot.
 2. **Mission Callout** (amber/paper panel at top of Command Center) explains
    the system in plain English: what it monitors (privileged users), why
@@ -119,11 +119,13 @@ Each detection produces:
 
 - **Risk score (0-1)** with a **risk band** (LOW / MEDIUM / HIGH / CRITICAL)
 - **SHAP explanation** — top 5 model features driving this score, in plain English
-- **LLM investigation memo** — Groq `openai/gpt-oss-120b` (`reasoning_effort=low`)
-  with deterministic Jinja fallback. Each memo is 4 paragraphs (Risk Summary /
-  What We Observed / Why It Matters / Recommended Next Step) plus an audit-trail
-  footer with the raw SHAP factors. Plain English first, technical detail
-  second — readable by both a Branch Manager and a fraud analyst.
+- **LLM investigation memo** — open-weight `openai/gpt-oss-120b` (`reasoning_effort=low`)
+  running inside an Intel TDX + NVIDIA H200 GPU confidential compute enclave on
+  NEAR AI Cloud. Each request returns a verifiable TEE attestation. Deterministic
+  Jinja fallback if the gateway is unreachable. Each memo is 4 paragraphs (Risk
+  Summary / What We Observed / Why It Matters / Recommended Next Step) plus an
+  audit-trail footer with the raw SHAP factors. Plain English first, technical
+  detail second — readable by both a Branch Manager and a fraud analyst.
 - **Graph neighbourhood** — which other flagged users share systems with this person
 
 ---
@@ -136,7 +138,7 @@ Each detection produces:
 | Escalate to supervisor | — | ✓ | ✓ |
 | Approve / reject escalations | — | ✓ | ✓ |
 | Bulk triage (multi-select) | — | ✓ | ✓ |
-| Regenerate Groq narrative | — | ✓ | ✓ |
+| Regenerate investigation memo | — | ✓ | ✓ |
 | Audit log access | — | ✓ | ✓ |
 | Department rollup + Command Center landing | — | — | ✓ |
 
@@ -165,8 +167,13 @@ synthetic_events.jsonl                          (516 K events, dual-schema —
                                       │
                           LightGBM M1+M2 blend → SHAP top-5
                                       │ score >= 0.16032509
-                          Groq narrative (openai/gpt-oss-120b, reasoning_effort=low)
-                          + Jinja fallback that's structurally identical
+                          (+ T-HGNN graph signal · SimCLR cold-start embedding
+                             fused at scoring time: 0.88·lgb + 0.08·thgnn + 0.04·simclr)
+                                      │
+                          Narrative LLM — openai/gpt-oss-120b inside Intel TDX +
+                          NVIDIA H200 confidential compute enclave (NEAR AI Cloud).
+                          Per-request TDX attestation cached + surfaced on every alert.
+                          Silent failover + Jinja fallback so the UI never breaks.
                                       │
                           FastAPI REST + WebSocket (alert.new / alert.updated / event.scored)
                                       │
@@ -181,14 +188,14 @@ synthetic_events.jsonl                          (516 K events, dual-schema —
 ## Tech stack
 
 - **Backend**: Python 3.11, FastAPI, async SQLAlchemy 2, Alembic, structlog
-- **ML**: LightGBM (M1+M2 blended) + **T-HGNN** (Heterogeneous Graph Transformer over account ↔ counterparty, 2 layers, 4 heads) + **SimCLR** (self-supervised contrastive pre-training, NT-Xent loss). Fused at scoring time: `0.88·lgb + 0.08·thgnn + 0.04·simclr`. SHAP TreeExplainer, 146 features, threshold 0.16032509
-- **LLM**: Groq SDK, model `openai/gpt-oss-120b` with `reasoning_effort=low`, Jinja fallback
-- **Streaming**: Apache Kafka, confluent-kafka-python
+- **ML — scoring**: LightGBM (M1 + M2 blended) + **T-HGNN** (Heterogeneous Graph Transformer over account ↔ counterparty, 2 layers, 4 heads, PyTorch Geometric) + **SimCLR** (self-supervised contrastive pre-training, NT-Xent loss, PyTorch). Fused at scoring time: `0.88·lgb + 0.08·thgnn + 0.04·simclr`. SHAP TreeExplainer, 146 features, threshold 0.16032509. Embedding artifacts trained on Kaggle GPU, served as O(1) per-account lookups on the production CX33.
+- **ML — confidential inference**: `openai/gpt-oss-120b` running inside an Intel TDX + NVIDIA H200 GPU confidential compute enclave on **NEAR AI Cloud**. Per-request cryptographic attestation (ed25519-signed gateway + Intel TDX quote, ≈5 KB) cached on boot and surfaced per-alert. Provider-agnostic OpenAI SDK client with silent failover so the demo path never breaks.
+- **Streaming**: Apache Kafka (confluent-kafka-python), single-process scoring consumer
 - **Graph**: Neo4j 5 (community), AsyncGraphDatabase
 - **State**: Redis 7 (per-user feature snapshot + live deltas), Postgres 15
-- **Auth**: Keycloak 23 OIDC + JWT (bypassed in `PREFLIGHT_MODE=1`)
+- **Auth**: Keycloak 23 OIDC + JWT (bypassed in `PREFLIGHT_MODE=1` for the panel demo)
 - **Frontend**: React 18, Vite, TypeScript, Tailwind, D3.js, Recharts, react-markdown, zustand, TanStack Query
-- **Infra**: Docker Compose (12 services), host nginx + certbot at the edge
+- **Infra**: Docker Compose (12 services), host nginx + certbot at the edge, Hetzner CX33 in Helsinki
 - **CI/CD**: GitHub Actions — `ci.yml` (ruff + pytest + tsc) on every PR, `deploy.yml` SSHes into the VPS and runs `deploy.sh` on every push to `main`
 
 ---
@@ -199,7 +206,8 @@ synthetic_events.jsonl                          (516 K events, dual-schema —
 git clone https://github.com/dhruvagrawal27/hawkeye-nineagents
 cd hawkeye-nineagents
 cp .env.example .env
-# fill GROQ_API_KEY at minimum (get a free key at console.groq.com)
+# fill NEAR_AI_API_KEY (TEE-attested LLM gateway; key at cloud.near.ai/dashboard/keys)
+# optionally fill GROQ_API_KEY for silent failover
 # leave PREFLIGHT_MODE=1 for local dev (auth bypassed; role switcher controls UI gating)
 
 docker compose up -d                                       # 12 services, ~60-90s cold boot

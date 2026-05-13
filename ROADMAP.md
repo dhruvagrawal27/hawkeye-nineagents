@@ -10,6 +10,11 @@ Everything in §1 ships on the existing box. Everything in §2 is honestly out o
 
 Sorted by impact-per-effort. Every item below has been costed against the 8 GB RAM / 4 vCPU budget.
 
+> **Status update (v0.7.0)**: §1.4 (TEE-attested LLM), §1.5 (T-HGNN +
+> SimCLR fusion via Kaggle GPU offload) and embedding-service nearest-
+> neighbor coverage are all **shipped and live**. The items below are
+> what remains for the next 1-2 sprints.
+
 ### 1.1 ⭐ Wire Keycloak SSO into the SPA (drop `PREFLIGHT_MODE=1`)
 
 **What** — Add `keycloak-js` to the React SPA so it redirects to Keycloak on first visit, gets a JWT, uses it for API + WebSocket calls. Then flip `PREFLIGHT_MODE=0` in `/opt/hawkeye/.env` so the backend enforces auth.
